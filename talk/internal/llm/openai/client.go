@@ -39,6 +39,8 @@ func (c *OpenAIClient) Complete(ctx context.Context, systemPrompt string, messag
 		Messages: toSDKMessages(systemPrompt, messages),
 	}
 
+	applyOutputLimit(&params, c.model)
+
 	if c.model.ThinkingStyle == domain.ThinkingStyleEffort && opts.ThinkingEffort != "" && opts.ThinkingEffort != domain.ThinkingOff {
 		params.ReasoningEffort = openai.ReasoningEffort(opts.ThinkingEffort)
 	}
@@ -58,4 +60,18 @@ func (c *OpenAIClient) Complete(ctx context.Context, systemPrompt string, messag
 
 	msg, usage := fromSDKResponse(resp)
 	return msg, usage, nil
+}
+
+func applyOutputLimit(params *openai.ChatCompletionNewParams, model domain.Model) {
+	limit := model.EffectiveOutputLimit()
+	if limit <= 0 {
+		return
+	}
+
+	switch model.OutputLimitParameter {
+	case domain.OutputLimitParameterMaxTokens:
+		params.MaxTokens = openai.Int(limit)
+	case domain.OutputLimitParameterMaxCompletionTokens:
+		params.MaxCompletionTokens = openai.Int(limit)
+	}
 }

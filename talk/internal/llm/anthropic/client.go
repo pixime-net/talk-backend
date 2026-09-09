@@ -26,8 +26,12 @@ func NewAnthropicClient(apiKey string, model domain.Model) *AnthropicClient {
 
 // Complete sends the conversation to Anthropic and returns the assistant response with token usage.
 func (c *AnthropicClient) Complete(ctx context.Context, systemPrompt string, messages []domain.Message, tools []domain.Tool, opts domain.CompletionOptions) (*domain.Message, domain.Usage, error) {
-	maxTokens := c.model.MaxOutputTokens
+	maxTokens := c.model.EffectiveOutputLimit()
 	if maxTokens == 0 {
+		// The Messages API requires max_tokens (SDK field is api:"required"), so there
+		// is no provider default to preserve when the effective rule yields zero.
+		// AC#5's "omit the parameter" path is unachievable here; fall back to a
+		// conservative ceiling instead (deviation documented in story 10.1 review).
 		maxTokens = 4096
 	}
 

@@ -59,3 +59,56 @@ func TestSupportedModels(t *testing.T) {
 		}
 	}
 }
+
+func TestModelEffectiveOutputLimit(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider int64
+		request  int64
+		want     int64
+	}{
+		{name: "provider only", provider: 100, want: 100},
+		{name: "request only", request: 50, want: 50},
+		{name: "request below provider", provider: 100, request: 50, want: 50},
+		{name: "request equals provider", provider: 100, request: 100, want: 100},
+		{name: "request above provider", provider: 100, request: 150, want: 100},
+		{name: "zero request", provider: 100, request: 0, want: 100},
+		{name: "no limits", want: 0},
+		{name: "negative request", request: -1, want: 0},
+		{name: "negative provider", provider: -1, request: 100, want: 100},
+		{name: "negative provider no request", provider: -1, want: 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			model := Model{ProviderMaxOutputTokens: tt.provider, RequestMaxOutputTokens: tt.request}
+			if got := model.EffectiveOutputLimit(); got != tt.want {
+				t.Fatalf("EffectiveOutputLimit() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSupportedModels_DoesNotContainPoolsideAgent(t *testing.T) {
+	for _, model := range SupportedModels() {
+		if model == "agent" {
+			t.Fatal("Poolside agent must not be registered")
+		}
+	}
+}
+
+// Hardcodes the expected alias set so that dropping an existing model (or adding
+// an unexpected one) fails loudly, unlike the registry-derived TestSupportedModels.
+func TestSupportedModels_PreservesAllAliases(t *testing.T) {
+	expected := []string{"haiku-4.5", "sonnet-4.6", "sonnet-5", "opus-4.6", "o4-mini", "gpt-5.4", "mistral-small"}
+	got := SupportedModels()
+
+	if len(got) != len(expected) {
+		t.Fatalf("SupportedModels() = %v, want exactly %v", got, expected)
+	}
+	for i := range expected {
+		if got[i] != expected[i] {
+			t.Fatalf("SupportedModels()[%d] = %q, want %q (full list %v)", i, got[i], expected[i], expected)
+		}
+	}
+}
