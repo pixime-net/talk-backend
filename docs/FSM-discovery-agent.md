@@ -1,20 +1,27 @@
 
-# Geographical data discovery & mapping
+# Geographical data discovery & mapping agents
 
 ## Data Model
+
+The following example is provided for illustration. Assume that the database contains other data tables.
+
+**Prerequesites**:
+- All tables and columns must have a description (`COMMENT ON`).
+- The description (`COMMENT ON`) of each column containing a place name must include the keyword "toponym".
+
 ```mermaid
 erDiagram
     %% regions administratives
     REGION {
         string insee_code PK "code insee de la région"
-        string nom_region "toponym"
+        string nom_region "nom de la région, toponym"
         geometry geom
     }
 
     %% départements administratifs
     DEPARTEMENT {
         string insee_code PK "code insee du département"
-        string nom_departement "toponym"
+        string nom_departement "nom du département, toponym"
         string insee_code_region FK "code insee de la région de rattachement"
         geometry geom
     }
@@ -34,46 +41,236 @@ erDiagram
 
 
 
-## Agent Workflow (first step)
+## Main agent workflow
+
+**Prompt** : You are a helpful AI assistant specialized in **PostGIS database analysis** and **SQL geographical query generation**. 
+
+Use the **tools below** in a **FSM basis**:
+1. database_check_toponym
+2. database_discovery
+3. table_definition
+4. exec_query
+
 
 ```mermaid
-flowchart TD
-    direction TD
-    Q(Q: Proportion de femmes par département d'Ile de France) --> Agent
-    subgraph Agent[Agent]
-        direction TD
-        P(Prompt: You are a helpful AI assistant specialized in PostGIS database analysis and SQL geographical query generation. Use the tools below in a FSM basis.)   
-        subgraph tool[Tools]
-            direction TD
-            subgraph SG[Check for table and columns in the database by searching input strings where column description labelled by toponym keyword]
+flowchart TB
+    QUESTION(Q: Proportion de femmes par département d'Ile de France) --> AGENT
+    
+    subgraph AGENT[Agent]
+        direction TB
+        
+        PROMPT(Prompt: You are a helpful AI assistant specialized in PostGIS database analysis and SQL geographical query generation. Use the tools below in a FSM basis.)
+        
+
+        T1_INPUT(&quot;Ile de France&quot;)
+        T1_TOOL[database_check_toponym]
+        T1_OUTPUT(&#91&#123table:Region, column:nom_region&#125&#93)
+
+        T2_INPUT(&quot;proportion&quot;,&quot;femmes&quot; &quot;département&quot;) 
+        T2_TOOL[database_discovery] 
+        T2_OUTPUT(&#91&#123table:Departement&#125, &#123table:Population&#125&#93)
+
+        T3_INPUT(&#91Region, Departement, Population&#93)
+        T3_TOOL[table_definition]
+        T3_OUTPUT(&#91CREATE TABLE Region..., CREATE TABLE Departement..., CREATE TABLE Population...&#93)
+
+        T4_INPUT(SELECT d.nom_departement, ROUND#40;#40;p.pop_femme::numeric / NULLIF#40;p.pop_total, 0#41;#41; * 100, 2#41;
+                    AS pct_pop_femme, d.geom FROM REGION r JOIN DEPARTEMENT ...JOIN POPULATION p ... WHERE r.nom_region = 'Île-de-France'; )
+        T4_TOOL[exec_query]
+        T4_OUTPUT1(SELECT SQL statement with geometry)
+        T4_OUTPUT2(Limited number of output records)
+
+        R(R: Paris:49,8%, Haut de Seine:43,1%,...)
+
+        subgraph TOOLS[Tools]
+            direction TB
+            subgraph T1[Check for table and columns in the database by searching input strings where column description labelled by toponym keyword]
                 direction LR
-                AI(&quot;Ile de France&quot;) --> A
-                A[database_check_toponym] --> AO(&#91&#123table:Region, column:nom_region&#125&#93)
+                T1_INPUT --> T1_TOOL
+                T1_TOOL --> T1_OUTPUT
             end
-            subgraph SG1[Discover database tables and columns which contains strings within their description - with relationship closure]
+            subgraph T2[Discover database tables and columns which contains strings within their description - with relationship closure]
                 direction LR
-                BI(&quot;proportion&quot;,&quot;femmes&quot; &quot;département&quot;) --> B
-                B[database_discovery] --> BO(&#91&#123table:Departement&#125, &#123table:Population&#125&#93)
+                T2_INPUT --> T2_TOOL
+                T2_TOOL --> T2_OUTPUT
             end
-            subgraph SG2[Retrieve the existing SQL CREATE TABLE statement for given tables with comments, columns, constraints, foreign keys, etc.]
+            subgraph T3[Retrieve the existing SQL CREATE TABLE statement for given tables with comments, columns, constraints, foreign keys, etc.]
                 direction LR
-                CI(&#91Region, Departement, Population&#93) --> C[table_definition]
-                C --> CO(&#91CREATE TABLE Region..., CREATE TABLE Departement..., CREATE TABLE Population...&#93)
+                T3_INPUT --> T3_TOOL
+                T3_TOOL --> T3_OUTPUT
             end
-            subgraph SG3[Query execution]
+            subgraph T4[Query execution]
                 direction LR
-                DI(SELECT d.nom_departement, ROUND#40;#40;p.pop_femme::numeric / NULLIF#40;p.pop_total, 0#41;#41; * 100, 2#41;
-                    AS pct_pop_femme, d.geom FROM REGION r JOIN DEPARTEMENT ...JOIN POPULATION p ... WHERE r.nom_region = 'Île-de-France'; ) --> D
-                D(exec_query) --> DO1(SELECT SQL statement with geometry)
-                 D(exec_query) --> DO2(Limited number of output records)
+                T4_INPUT --> T4_TOOL
+                T4_TOOL --> T4_OUTPUT1
+                T4_TOOL --> T4_OUTPUT2
             end
-        SG --> SG1
-        SG1 --> | Useful tables discovery completed | SG2
-        SG2 --> | Infer SQL SELECT Statement | SG3
-        DO2 --> R(R: Paris:49,8%, Haut de Seine:43,1%,...)
+        T1 --> T2
+        T2 --> | Useful tables discovery completed | T3
+        T3 --> | Infer SQL SELECT Statement | T4
+        T4_OUTPUT2 --> R
         end
-        P --> SG
+    PROMPT --> TOOLS
     end
 ```
 
-## Agent workflow (second step)
+## Sub agent workflow
+
+### Prompt
+
+You are an AI assistant specialized in MapLibre GL style generation for 
+PostGIS query results.
+
+#### Inputs
+
+You receive the following from the calling agent:
+
+- `query` (mandatory): a PostGIS SQL SELECT statement returning at least 
+  one geometry column.
+- `question` (mandatory): the original user question that motivated this 
+  query. Use it to understand the intent behind the data, especially when 
+  the attributes below are missing or ambiguous.
+- `value_attribute` (optional): a column suggested by the calling agent as 
+  the main subject or measure of the question (e.g. population, risk 
+  level, count). This is a hint, not a fact — you must verify it.
+- `value_attribute_description` (optional): free-text context on 
+  `value_attribute` (e.g. a column comment from the database schema), 
+  helping you judge its meaning and reliability.
+- `display_attribute` (optional): column(s) suggested as identifying or 
+  naming each feature (e.g. a place name, a code), intended for labels 
+  or tooltips. Also a hint to verify, not a fact.
+- `display_attribute_description` (optional): free-text context on 
+  `display_attribute`, same purpose as above.
+
+None of these hints are guaranteed to be correct, present in the final 
+query result, or well-suited to their intended role. You are responsible 
+for the final decision.
+
+#### Tools
+
+1. `data_profiler`: runs against `query` to return geometry type, SRID, 
+   bounding box, feature count, and — depending on what you ask it to 
+   profile — either a statistical distribution (min/max/quartiles for 
+   numeric, frequency/cardinality for categorical) for a value column, 
+   or an existence/type/uniqueness check for a display column.
+2. `store_map`: persists the pair (query, style), along with a short 
+   map title, and returns an id.
+
+#### Workflow (finite state machine)
+
+**State 1 — Profile**
+Call `data_profiler` with `query`, and pass `value_attribute` and 
+`display_attribute` if provided, so the profiler can validate them 
+alongside the geometry profile.
+
+**State 2 — Validate and resolve attributes**
+From the profiler output:
+- If `value_attribute` exists in the result, has a plausible type 
+  (numeric or low/medium-cardinality categorical), and its meaning 
+  (informed by `value_attribute_description` and `question`) fits the 
+  question's subject — keep it.
+- Otherwise, select the best candidate yourself from the columns 
+  reported by the profiler, using `question` as the deciding signal. 
+  It is valid to conclude there is no meaningful value attribute 
+  (e.g. a purely spatial query) — in that case, no value-based 
+  encoding should be applied.
+- Apply the same validation logic to `display_attribute`, using the 
+  profiler's uniqueness ratio: a column with low uniqueness relative to 
+  row count is a weak identifier and should be reconsidered or replaced.
+- If validation requires checking a different candidate column not yet 
+  profiled, return to State 1 with the new candidate before proceeding.
+
+**State 3 — Design the style**
+Produce two distinct outputs from the resolved profile: the MapLibre 
+style itself, and complementary metadata that is not part of the 
+MapLibre spec but is needed downstream.
+
+*MapLibre style* (paint/layout only):
+- Geometry type → layer type (`circle` for points, `line` for lines, 
+  `fill` for polygons).
+- Value attribute (if any):
+  - Numeric continuous → sequential or diverging color ramp using the 
+    profiled quartiles as class breaks (diverging if the question implies 
+    polarity, e.g. risk, deviation from a norm).
+  - Categorical → qualitative palette sized to the reported cardinality; 
+    if cardinality is too high for a legible palette, consider aggregating 
+    or falling back to a neutral style.
+  - None → single neutral color, no data-driven encoding.
+- Feature count → enable clustering if the count exceeds a reasonable 
+  rendering threshold for point layers.
+- Display attribute (if any) → map to a `text-field` in a `symbol` layer 
+  for on-map labels.
+- Bounding box → suggested initial viewport.
+
+*Complementary metadata* (not MapLibre styling — frontend-facing):
+- Map title: a short, human-readable title (a few words, no trailing 
+  punctuation) summarizing what the map shows, based on `question` and 
+  the resolved attributes — e.g. "Population by department". Not a 
+  restatement of the SQL query; phrase it the way a map legend or panel 
+  heading would read.
+- Recommended fields: independently of the style, report which 
+  attribute should be used as a feature label and which attribute(s) 
+  are worth surfacing in a tooltip/popup on click or hover. MapLibre 
+  has no native tooltip concept — this is guidance for the frontend, 
+  not part of the style spec.
+
+**State 4 — Store**
+Call `store_map` with `query` and the resulting style object 
+(including the complementary metadata block).
+
+#### Output
+
+Respond with only the id returned by `store_map`. No explanation, no 
+markdown, no additional text.
+
+### data_profiler tool
+
+| Input | Description | Optional | example |
+|---|---|---|---|
+| question | The user's question | No | Proportion de femmes par département d'Ile de France ? |
+| query |The SQL SELECT statement | No | SELECT **d.nom_departement**, ... AS **pct_pop_femme**, **d.geom** FROM REGION r JOIN ... DEPARTEMENT d ... |
+| value_attribute | the column representing the main subject/measure of the question. | Yes | pct_pop_femme|
+| value_attribute_description | description of value_attribute found in database | Yes | |
+| display_attribute | The column(s) that identify or name each row (e.g. a place name, a code, a title) — the information a person would use to recognize  or refer to a specific result, as opposed to the main subject or measure of the question (see `value_attribute`). | Yes | nom_departement |
+| display_attribute_description | description of display_attribute found in database | Yes | |
+
+
+| Output Field | Type | Description |
+|---|---|---|
+| `geometry_type` | `string` | Detected geometry type (`Point`, `LineString`, `Polygon`, `MultiPolygon`, ...) |
+| `srid` | `integer` | Spatial reference system of the geometry |
+| `bbox` | `[float, float, float, float]` | Spatial extent of the result (`[minx, miny, maxx, maxy]`) |
+| `n_features` | `integer` | Total number of rows/features returned by the query |
+| `columns` | `array` | List of non-geometry columns in the result, with name and type — useful to validate or reconsider `value_attribute`/`display_attribute` |
+| `value_attribute` | `object \| null` | Profile of the value column, if provided or requested (see the sub-tables below) |
+| `display_attribute` | `object \| null` | Profile of the display column(s), if provided or requested (see the sub-tables below) |
+
+**Value attribute (numeric)**
+
+| Output field | Type | Description |
+|---|---|---|
+| `column` | `string` | Column name |
+| `exists` | `boolean` | Present in the query result |
+| `type` | `string` | `numeric` |
+| `min` / `max` | `float` | Distribution bounds |
+| `q1` / `median` / `q3` | `float` | Quartiles, used to define color class breaks |
+
+**Value attribute (categorical)**
+
+| Field | Type | Description |
+|---|---|---|
+| `column` | `string` | Column name |
+| `exists` | `boolean` | Present in the query result |
+| `type` | `string` | `categorical` |
+| `n_distinct` | `integer` | Number of distinct values |
+| `top_values` | `array` | Most frequent values with their counts (capped, e.g. top 20) |
+
+**Display attribute**
+
+| Field | Type | Description |
+|---|---|---|
+| `column` | `string` | Column name |
+| `exists` | `boolean` | Present in the query result |
+| `type` | `string` | Detected type (expected: text/identifier-like) |
+| `n_distinct` | `integer` | Number of distinct values |
+| `uniqueness_ratio` | `float` | `n_distinct / n_features` — close to 1 means a reliable per-feature identifier |
