@@ -66,15 +66,15 @@ flowchart TB
 
         T1_INPUT(&quot;Ile de France&quot;)
         T1_TOOL[database_check_toponym]
-        T1_OUTPUT(&#91&#123table:Region, column:nom_region&#125&#93)
+        T1_OUTPUT("&#91&#123table:Region, column:nom_region&#125&#93")
 
-        T2_INPUT(&quot;proportion&quot;,&quot;femmes&quot; &quot;département&quot;)
+        T2_INPUT("proportion, femme, département")
         T2_TOOL[database_discovery]
-        T2_OUTPUT(&#91&#123table:Departement&#125, &#123table:Population&#125&#93)
+        T2_OUTPUT("&#91&#123table:Departement&#125, &#123table:Population&#125&#93")
 
-        T3_INPUT(&#91Region, Departement, Population&#93)
+        T3_INPUT("&#91Region, Departement, Population&#93")
         T3_TOOL[table_definition]
-        T3_OUTPUT(&#91CREATE TABLE Region..., CREATE TABLE Departement..., CREATE TABLE Population...&#93)
+        T3_OUTPUT("&#91CREATE TABLE Region..., CREATE TABLE Departement..., CREATE TABLE Population...&#93")
 
         T4_INPUT(SELECT d.nom_departement, ROUND#40;#40;p.pop_femme::numeric / NULLIF#40;p.pop_total, 0#41;#41; * 100, 2#41;
                     AS pct_pop_femme, d.geom FROM REGION r JOIN DEPARTEMENT ...JOIN POPULATION p ... WHERE r.nom_region = 'Île-de-France'; )
