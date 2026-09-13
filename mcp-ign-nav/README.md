@@ -117,3 +117,63 @@ See [docs/mcp-server-authentication.md](../docs/mcp-server-authentication.md) fo
 
 This server includes built-in HTTP security hardening (rate limiting, path filtering, security headers, timeouts).  
 See [docs/mcp-server-secured.md](../docs/mcp-server-secured.md) for configuration details.
+
+## Talk workflow example
+
+```mermaid
+flowchart TB
+    QUESTION(<b>Q</b>:Itineraire entre Paris et Lyon ?) --> AGENT
+    FRONTEND@{ shape: lean-r, label: "send output tool to frontend using AG-UI event" }
+
+    subgraph AGENT[Sub Agent]
+        direction TB
+
+        PROMPT(<b>Prompt</b>: You are a helpful AI assistant specialized in French geolocation and itinerary calculation)
+
+        T1_INPUT(Paris)
+        T1_TOOL[geocode]
+        T1_OUTPUT(lat: 48.859, lon: 2.347)
+
+        T2_INPUT(Lyon)
+        T2_TOOL[geocode]
+        T2_OUTPUT(lat: 45.758, lon: 4.835)
+
+        T3_INPUT(start: 48.859,2.347,<br/>end: 45.758, 4.835)
+        T3_TOOL[route]
+        T3_OUTPUT1(total distance,<br>total duration,<br>bounding box,<br>GeoJSON geometry,<br>route portions with turn-by-turn steps)
+        T3_OUTPUT2(total distance,<br>total duration,<br>bounding box,<br/>route portions with turn-by-turn steps)
+
+        R(<b>R</b>: Voici l'itinéraire entre Paris et Lyon...)
+
+        FORK@{ shape: fork, label: "" }
+        JOIN@{ shape: join, label: "" }
+
+        subgraph TOOLS[Tools]
+            direction TB
+            subgraph T1[Geocode start point]
+                direction LR
+                T1_INPUT --> T1_TOOL
+                T1_TOOL --> T1_OUTPUT
+            end
+            subgraph T2[Geocode end point]
+                direction LR
+                T2_INPUT --> T2_TOOL
+                T2_TOOL --> T2_OUTPUT
+            end
+            subgraph T3[Get itinerary from start point to end point]
+                direction LR
+                T3_INPUT --> T3_TOOL
+                T3_TOOL --> | user | T3_OUTPUT1
+                T3_TOOL --> | assistant | T3_OUTPUT2
+            end
+        FORK --> T1
+        FORK --> T2
+        T1 --> JOIN
+        T2 --> JOIN
+        JOIN --> T3
+        T3_OUTPUT1 --> FRONTEND
+        T3_OUTPUT2 --> R
+        end
+    PROMPT --> FORK
+    end
+```

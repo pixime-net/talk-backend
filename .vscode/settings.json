@@ -53,5 +53,9 @@
   "sonarlint.connectedMode.project": {
     "connectionId": "pixime-net",
     "projectKey": "pixime-net_talk-backend"
-  }
+  },
+  "[markdown]": {
+    "editor.formatOnSave": false
+  },
+  "markdown.styles": [".vscode/markdown-preview.css"]
 }

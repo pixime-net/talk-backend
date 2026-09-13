@@ -1,0 +1,5 @@
+/* Right-align table blocks in the Markdown preview instead of the default centered layout. */
+table {
+  margin-left: 0;
+  margin-right: auto;
+}
