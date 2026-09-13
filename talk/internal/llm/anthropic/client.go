@@ -41,13 +41,23 @@ func (c *AnthropicClient) Complete(ctx context.Context, systemPrompt string, mes
 		Messages:  toSDKMessages(messages),
 	}
 
-	if opts.ThinkingEffort != "" && opts.ThinkingEffort != domain.ThinkingOff {
-		switch c.model.ThinkingStyle {
-		case domain.ThinkingStyleAdaptive:
+	switch c.model.ThinkingStyle {
+	case domain.ThinkingStyleAdaptive:
+		if opts.ThinkingEffort == "" || opts.ThinkingEffort == domain.ThinkingOff {
 			params.Thinking = anthropic.ThinkingConfigParamUnion{
-				OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{},
+				OfDisabled: &anthropic.ThinkingConfigDisabledParam{},
 			}
-		case domain.ThinkingStyleBudget:
+		} else {
+			// Sonnet 5+/Opus 5+ default display to "omitted"; force "summarized" so thinking text is returned.
+			params.Thinking = anthropic.ThinkingConfigParamUnion{
+				OfAdaptive: &anthropic.ThinkingConfigAdaptiveParam{
+					Display: anthropic.ThinkingConfigAdaptiveDisplaySummarized,
+				},
+			}
+			params.OutputConfig.Effort = effortToOutputConfigEffort(opts.ThinkingEffort)
+		}
+	case domain.ThinkingStyleBudget:
+		if opts.ThinkingEffort != "" && opts.ThinkingEffort != domain.ThinkingOff {
 			budgetTokens := thinkingBudget(opts.ThinkingEffort, maxTokens)
 			params.Thinking = anthropic.ThinkingConfigParamUnion{
 				OfEnabled: &anthropic.ThinkingConfigEnabledParam{
@@ -76,6 +86,20 @@ func (c *AnthropicClient) Complete(ctx context.Context, systemPrompt string, mes
 
 	msg, usage := fromSDKResponse(resp)
 	return msg, usage, nil
+}
+
+// effortToOutputConfigEffort maps a domain thinking effort to the Anthropic output_config effort level.
+func effortToOutputConfigEffort(effort domain.ThinkingEffort) anthropic.OutputConfigEffort {
+	switch effort {
+	case domain.ThinkingLow:
+		return anthropic.OutputConfigEffortLow
+	case domain.ThinkingMedium:
+		return anthropic.OutputConfigEffortMedium
+	case domain.ThinkingHigh:
+		return anthropic.OutputConfigEffortHigh
+	default:
+		return anthropic.OutputConfigEffortLow
+	}
 }
 
 // thinkingBudget computes budget_tokens as a proportion of the model's max output tokens.
