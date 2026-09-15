@@ -10,11 +10,11 @@ const (
 	APIClientAnthropic APIClient = "anthropic"
 )
 
-// OLTPProvider identifies the LLM provider backend.
-type OLTPProvider string
+// OTLPProvider identifies the LLM provider backend.
+type OTLPProvider string
 
 /*
-OLTP GenAI semantic conventions for gen_ai.system (https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-agent-spans/):
+OTLP GenAI semantic conventions for gen_ai.system (https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-agent-spans/):
 openai	OpenAI
 anthropic	Anthropic
 aws.bedrock	AWS Bedrock
@@ -32,10 +32,10 @@ ibm.watsonx_ai	IBM Watsonx
 _other	Other provider (use with gen_ai.system_description)
 */
 const (
-	OLTPProviderAnthropic OLTPProvider = "anthropic"
-	OLTPProviderOpenAI    OLTPProvider = "openai"
-	OLTPProviderMistral   OLTPProvider = "mistral_ai"
-	OLTPProviderPoolside  OLTPProvider = "_other"
+	OTLPProviderAnthropic OTLPProvider = "anthropic"
+	OTLPProviderOpenAI    OTLPProvider = "openai"
+	OTLPProviderMistral   OTLPProvider = "mistral_ai"
+	OTLPProviderPoolside  OTLPProvider = "_other"
 )
 
 // ThinkingStyle describes how a model supports thinking/reasoning.
@@ -59,7 +59,7 @@ const (
 // Model maps a friendly model alias to provider-specific details.
 type Model struct {
 	Name                    string               // friendly alias for a model (e.g. "sonnet-4.6").
-	OLTPProvider            OLTPProvider         // The LLM provider following OpenTelemetry GenAI semantic conventions.
+	OTLPProvider            OTLPProvider         // The LLM provider following OpenTelemetry GenAI semantic conventions.
 	APIClient               APIClient            // The SDK client to use for this model.
 	APIKeyName              string               // Name of the environment variable for the API key.
 	URL                     string               // Optional base URL for API-compatible providers.
@@ -87,13 +87,13 @@ func (m Model) EffectiveOutputLimit() int64 {
 
 // registry holds all supported models.
 var registry = []Model{
-	{Name: "haiku-4.5", OLTPProvider: OLTPProviderAnthropic, APIClient: APIClientAnthropic, APIKeyName: "ANTHROPIC_API_KEY", APIModelID: "claude-haiku-4-5", ThinkingStyle: ThinkingStyleBudget, ContextWindowTokens: 200_000, ProviderMaxOutputTokens: 64_000, RequestMaxOutputTokens: 8192},
-	{Name: "sonnet-4.6", OLTPProvider: OLTPProviderAnthropic, APIClient: APIClientAnthropic, APIKeyName: "ANTHROPIC_API_KEY", APIModelID: "claude-sonnet-4-5", ThinkingStyle: ThinkingStyleBudget, ContextWindowTokens: 200_000, ProviderMaxOutputTokens: 64_000, RequestMaxOutputTokens: 16384},
-	{Name: "sonnet-5", OLTPProvider: OLTPProviderAnthropic, APIClient: APIClientAnthropic, APIKeyName: "ANTHROPIC_API_KEY", APIModelID: "claude-sonnet-5", ThinkingStyle: ThinkingStyleAdaptive, ContextWindowTokens: 1_000_000, ProviderMaxOutputTokens: 128_000, RequestMaxOutputTokens: 16384},
-	{Name: "opus-4.6", OLTPProvider: OLTPProviderAnthropic, APIClient: APIClientAnthropic, APIKeyName: "ANTHROPIC_API_KEY", APIModelID: "claude-opus-4-6", ThinkingStyle: ThinkingStyleAdaptive, ContextWindowTokens: 1_000_000, ProviderMaxOutputTokens: 128_000, RequestMaxOutputTokens: 16384},
-	{Name: "o4-mini", OLTPProvider: OLTPProviderOpenAI, APIClient: APIClientOpenAI, APIKeyName: "OPENAI_API_KEY", APIModelID: "o4-mini", ThinkingStyle: ThinkingStyleEffort, ContextWindowTokens: 200_000, ProviderMaxOutputTokens: 100_000, RequestMaxOutputTokens: 16384, OutputLimitParameter: OutputLimitParameterMaxCompletionTokens},
-	{Name: "gpt-5.4", OLTPProvider: OLTPProviderOpenAI, APIClient: APIClientOpenAI, APIKeyName: "OPENAI_API_KEY", APIModelID: "gpt-4o", ContextWindowTokens: 128_000, ProviderMaxOutputTokens: 16_384, RequestMaxOutputTokens: 16384, OutputLimitParameter: OutputLimitParameterMaxTokens},
-	{Name: "mistral-small", OLTPProvider: OLTPProviderMistral, APIClient: APIClientOpenAI, APIKeyName: "MISTRAL_API_KEY", URL: "https://api.mistral.ai/v1", APIModelID: "mistral-small-4-0-26-03", RequestMaxOutputTokens: 8192, OutputLimitParameter: OutputLimitParameterMaxTokens},
+	{Name: "haiku-4.5", OTLPProvider: OTLPProviderAnthropic, APIClient: APIClientAnthropic, APIKeyName: "ANTHROPIC_API_KEY", APIModelID: "claude-haiku-4-5", ThinkingStyle: ThinkingStyleBudget, ContextWindowTokens: 200_000, ProviderMaxOutputTokens: 64_000, RequestMaxOutputTokens: 8192},
+	{Name: "sonnet-4.6", OTLPProvider: OTLPProviderAnthropic, APIClient: APIClientAnthropic, APIKeyName: "ANTHROPIC_API_KEY", APIModelID: "claude-sonnet-4-5", ThinkingStyle: ThinkingStyleBudget, ContextWindowTokens: 200_000, ProviderMaxOutputTokens: 64_000, RequestMaxOutputTokens: 16384},
+	{Name: "sonnet-5", OTLPProvider: OTLPProviderAnthropic, APIClient: APIClientAnthropic, APIKeyName: "ANTHROPIC_API_KEY", APIModelID: "claude-sonnet-5", ThinkingStyle: ThinkingStyleAdaptive, ContextWindowTokens: 1_000_000, ProviderMaxOutputTokens: 128_000, RequestMaxOutputTokens: 16384},
+	{Name: "opus-4.6", OTLPProvider: OTLPProviderAnthropic, APIClient: APIClientAnthropic, APIKeyName: "ANTHROPIC_API_KEY", APIModelID: "claude-opus-4-6", ThinkingStyle: ThinkingStyleAdaptive, ContextWindowTokens: 1_000_000, ProviderMaxOutputTokens: 128_000, RequestMaxOutputTokens: 16384},
+	{Name: "o4-mini", OTLPProvider: OTLPProviderOpenAI, APIClient: APIClientOpenAI, APIKeyName: "OPENAI_API_KEY", APIModelID: "o4-mini", ThinkingStyle: ThinkingStyleEffort, ContextWindowTokens: 200_000, ProviderMaxOutputTokens: 100_000, RequestMaxOutputTokens: 16384, OutputLimitParameter: OutputLimitParameterMaxCompletionTokens},
+	{Name: "gpt-5.4", OTLPProvider: OTLPProviderOpenAI, APIClient: APIClientOpenAI, APIKeyName: "OPENAI_API_KEY", APIModelID: "gpt-4o", ContextWindowTokens: 128_000, ProviderMaxOutputTokens: 16_384, RequestMaxOutputTokens: 16384, OutputLimitParameter: OutputLimitParameterMaxTokens},
+	{Name: "mistral-small", OTLPProvider: OTLPProviderMistral, APIClient: APIClientOpenAI, APIKeyName: "MISTRAL_API_KEY", URL: "https://api.mistral.ai/v1", APIModelID: "mistral-small-4-0-26-03", RequestMaxOutputTokens: 8192, OutputLimitParameter: OutputLimitParameterMaxTokens},
 }
 
 // Lookup returns the model details for a given alias.

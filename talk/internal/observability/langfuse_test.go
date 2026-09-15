@@ -1,4 +1,4 @@
-package usage
+package observability
 
 import (
 	"context"
@@ -184,7 +184,7 @@ func TestLangfuseUsageReporter_OTLPConversions(t *testing.T) {
 				TurnID:    domain.GenerateTraceID(),
 				ToolCalls: []domain.ToolCall{{ID: "tc-1", Name: "weather", Input: map[string]any{"city": "Paris"}}},
 			},
-			Model: domain.Model{OLTPProvider: domain.OLTPProviderAnthropic, APIModelID: "claude-sonnet-4-5"},
+			Model: domain.Model{OTLPProvider: domain.OTLPProviderAnthropic, APIModelID: "claude-sonnet-4-5"},
 			Kind:  domain.CallKindInitial,
 			APICall: domain.APICallEvent{
 				Input:  "hello",
@@ -212,7 +212,7 @@ func TestLangfuseUsageReporter_OTLPConversions(t *testing.T) {
 				Role:   domain.RoleAssistant,
 				TurnID: domain.GenerateTraceID(),
 			},
-			Model:      domain.Model{OLTPProvider: domain.OLTPProviderAnthropic, APIModelID: "claude-sonnet-4-5"},
+			Model:      domain.Model{OTLPProvider: domain.OTLPProviderAnthropic, APIModelID: "claude-sonnet-4-5"},
 			Kind:       domain.CallKindInitial,
 			Usage:      domain.Usage{InputTokens: 10, OutputTokens: 20},
 			StartedAt:  now.Add(-2 * time.Second),

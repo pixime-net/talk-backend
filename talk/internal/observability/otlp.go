@@ -1,4 +1,4 @@
-package usage
+package observability
 
 import (
 	"encoding/json"
@@ -95,7 +95,7 @@ func (l *LangfuseUsageReporter) apiCallToOTLP(messageEvent domain.MessageEvent) 
 	parentSpanID := messageEvent.TurnSpanID
 
 	// OTLPProvider constants are defined to match OTel GenAI semantic conventions directly.
-	system := string(messageEvent.Model.OLTPProvider)
+	system := string(messageEvent.Model.OTLPProvider)
 
 	attributes := []OTLPAttribute{
 		// GenAI semantic conventions

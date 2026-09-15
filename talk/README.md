@@ -184,7 +184,7 @@ talk/
 │   ├── mcp/                    # MCP server manager and SQLite registry
 │   ├── memory/                 # SQLite session and message store
 │   ├── prompt/                 # File-based and static prompt providers
-│   └── usage/                  # Console reporter, Langfuse / OTLP reporter
+│   └── observability/           # Console reporter, Langfuse / OTLP reporter
 ├── system_prompt.md            # Default system prompt
 ├── .env.example                # Environment variables template
 ├── Makefile

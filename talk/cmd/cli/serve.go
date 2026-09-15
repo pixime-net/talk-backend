@@ -216,7 +216,7 @@ func buildChatFunc(
 			Client:             client,
 			ModelID:            modelAlias,
 			Scope:              scope,
-			Provider:           modelDescriptor.OLTPProvider,
+			Provider:           modelDescriptor.OTLPProvider,
 			Store:              messages,
 			SessionBrowser:     browser,
 			PromptProvider:     pp,

@@ -14,8 +14,8 @@ func TestLookup_KnownModel(t *testing.T) {
 	if d.Name != "sonnet-4.6" {
 		t.Fatalf("expected ModelID %q, got %q", "sonnet-4.6", d.Name)
 	}
-	if d.OLTPProvider != OLTPProviderAnthropic {
-		t.Fatalf("expected OLTPProvider %q, got %q", OLTPProviderAnthropic, d.OLTPProvider)
+	if d.OTLPProvider != OTLPProviderAnthropic {
+		t.Fatalf("expected OTLPProvider %q, got %q", OTLPProviderAnthropic, d.OTLPProvider)
 	}
 	if d.APIClient != APIClientAnthropic {
 		t.Fatalf("expected APIClient %q, got %q", APIClientAnthropic, d.APIClient)

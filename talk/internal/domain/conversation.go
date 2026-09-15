@@ -36,7 +36,7 @@ type ConversationManager struct {
 	sessionScope   SessionScope
 	llmClient      LlmClient
 	modelID        string
-	oltpProvider   OLTPProvider
+	otlpProvider   OTLPProvider
 	messageStore   MessageStore
 	promptProvider PromptProvider
 	toolsProvider  func() []Tool
@@ -51,7 +51,7 @@ type ConversationManagerConfig struct {
 	Client             LlmClient
 	ModelID            string
 	Scope              SessionScope
-	Provider           OLTPProvider
+	Provider           OTLPProvider
 	Store              MessageStore
 	SessionBrowser     SessionBrowser
 	PromptProvider     PromptProvider
@@ -72,7 +72,7 @@ func NewConversationManager(cfg ConversationManagerConfig) *ConversationManager 
 		sessionScope:   cfg.Scope,
 		llmClient:      cfg.Client,
 		modelID:        cfg.ModelID,
-		oltpProvider:   cfg.Provider,
+		otlpProvider:   cfg.Provider,
 		messageStore:   cfg.Store,
 		promptProvider: cfg.PromptProvider,
 		toolsProvider:  cfg.Tools,
@@ -117,7 +117,7 @@ func (m *ConversationManager) Chat(ctx context.Context, userInput string) (strin
 	// turnSpanID is used to correlate all events for this conversation turn in observability. It is the parent span for all API call spans in this turn.
 	turnSpanID := GenerateSpanID()
 	turnStartedAt := time.Now()
-	model := Model{Name: m.modelID, OLTPProvider: m.oltpProvider}
+	model := Model{Name: m.modelID, OTLPProvider: m.otlpProvider}
 	// Store the user message in the conversation history before processing to ensure it's included in the context
 	// for the first API call and in observability.
 	if err := m.messageHandler.HandleMessageEvent(ctx, MessageEvent{

@@ -15,8 +15,8 @@ import (
 	"github.com/pixime-net/talk/internal/llm/router"
 	"github.com/pixime-net/talk/internal/mcp"
 	sqlitestore "github.com/pixime-net/talk/internal/memory/sqlite"
+	"github.com/pixime-net/talk/internal/observability"
 	"github.com/pixime-net/talk/internal/prompt"
-	"github.com/pixime-net/talk/internal/usage"
 
 	"github.com/spf13/cobra"
 )
@@ -103,7 +103,7 @@ func run(ctx context.Context, modelAlias, systemFile string, pprofEnabled bool) 
 		Client:             client,
 		ModelID:            modelAlias,
 		Scope:              scope,
-		Provider:           modelDescriptor.OLTPProvider,
+		Provider:           modelDescriptor.OTLPProvider,
 		Store:              messages,
 		SessionBrowser:     browser,
 		PromptProvider:     pp,
@@ -138,17 +138,17 @@ func run(ctx context.Context, modelAlias, systemFile string, pprofEnabled bool) 
 func buildReporters(cfg *config.Config) []domain.MessageEventHandler {
 	var reporters []domain.MessageEventHandler
 	if cfg.ConsoleUsageReporter {
-		reporters = append(reporters, &usage.ConsoleUsageReporter{})
+		reporters = append(reporters, &observability.ConsoleUsageReporter{})
 	}
 	if cfg.LangfuseSecretKey != "" && cfg.LangfusePublicKey != "" {
-		reporters = append(reporters, usage.NewLangfuseUsageReporter(usage.LangfuseConfig{
+		reporters = append(reporters, observability.NewLangfuseUsageReporter(observability.LangfuseConfig{
 			PublicKey: cfg.LangfusePublicKey,
 			SecretKey: cfg.LangfuseSecretKey,
 			BaseURL:   cfg.LangfuseBaseURL,
 		}))
 	}
 	if len(reporters) == 0 {
-		reporters = append(reporters, &usage.ConsoleUsageReporter{})
+		reporters = append(reporters, &observability.ConsoleUsageReporter{})
 	}
 	return reporters
 }

@@ -13,7 +13,7 @@ func newThinkingTestApp(p *spyPrinter) *App {
 	app.Messages = store
 	app.Manager = domain.NewConversationManager(domain.ConversationManagerConfig{
 		Client: fakeLlmClient{}, ModelID: "sonnet-4.6", Scope: app.Scope,
-		Provider: domain.OLTPProviderAnthropic, Store: store,
+		Provider: domain.OTLPProviderAnthropic, Store: store,
 		SessionBrowser: newFakeSessionBrowser(), PromptProvider: &stubPromptProvider{},
 		Tools: func() []domain.Tool { return nil }, MaxConcurrentTools: 1, ContextFullTurns: -1,
 	})
