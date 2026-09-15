@@ -175,13 +175,13 @@ func (fakeLlmClient) Complete(_ context.Context, _ string, _ []domain.Message, _
 // newTestApp creates an App with a spyPrinter and given options for testing.
 func newTestApp(p *spyPrinter) *App {
 	return &App{
-		Printer:      p,
-		Scope:        domain.NewSessionScope("test-session-id", "test-user"),
-		Messages:     newFakeStore(),
-		Sessions:     newFakeSessionBrowser(),
-		PP:           &stubPromptProvider{text: "You are a helpful assistant."},
-		CurrentModel: "sonnet-4.6",
-		LR:           newScriptReader(), // empty reader by default
-		Router:       &fakeRouter{client: fakeLlmClient{}},
+		Printer:        p,
+		Scope:          domain.NewSessionScope("test-session-id", "test-user"),
+		Messages:       newFakeStore(),
+		Sessions:       newFakeSessionBrowser(),
+		PromptProvider: &stubPromptProvider{text: "You are a helpful assistant."},
+		CurrentModel:   "sonnet-4.6",
+		Reader:         newScriptReader(), // empty reader by default
+		Router:         &fakeRouter{client: fakeLlmClient{}},
 	}
 }

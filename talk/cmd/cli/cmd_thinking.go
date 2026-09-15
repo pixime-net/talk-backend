@@ -30,7 +30,7 @@ func (a *App) cmdThinking() {
 		}
 	}
 
-	choice, err := a.LR.ReadLine(fmt.Sprintf("Choose [1-%d]: ", len(thinkingLevels)))
+	choice, err := a.Reader.ReadLine(fmt.Sprintf("Choose [1-%d]: ", len(thinkingLevels)))
 	if err != nil {
 		return
 	}

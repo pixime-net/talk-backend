@@ -175,10 +175,14 @@ func newManager(client *stubClient, tools []Tool) (*ConversationManager, *stubUs
 	store := &stubStore{}
 	handlers := NewMessageEventHandlers([][]MessageEventHandler{{store}, {reporter}})
 	mgr := NewConversationManager(ConversationManagerConfig{
-		Client:             client,
-		ModelID:            "test-model",
+		Client: client,
+		Model: Model{
+			Name:                    "test-model",
+			OTLPProvider:            OTLPProviderAnthropic,
+			ContextWindowTokens:     200_000,
+			ProviderMaxOutputTokens: 64_000,
+		},
 		Scope:              NewSessionScope("test-session", "anonymous"),
-		Provider:           OTLPProviderAnthropic,
 		Store:              store,
 		SessionBrowser:     store,
 		PromptProvider:     &stubPromptProvider{"system"},
@@ -303,6 +307,12 @@ func TestUsage_OnAPICallFiredPerComplete(t *testing.T) {
 	if assistantEvents[1].Usage.InputTokens != 20 {
 		t.Errorf("second call input tokens: got %d, want 20", assistantEvents[1].Usage.InputTokens)
 	}
+	if assistantEvents[0].Model.ContextWindowTokens != 200_000 {
+		t.Errorf("context window: got %d, want 200000", assistantEvents[0].Model.ContextWindowTokens)
+	}
+	if assistantEvents[0].Model.ProviderMaxOutputTokens != 64_000 {
+		t.Errorf("provider output limit: got %d, want 64000", assistantEvents[0].Model.ProviderMaxOutputTokens)
+	}
 }
 
 func TestUsage_OnConversationTurnAggregatesUsage(t *testing.T) {
@@ -378,6 +388,17 @@ func TestUsage_NoToolCall_SingleAPICallEvent(t *testing.T) {
 	}
 }
 
+func TestConversationManager_SetClientUpdatesModelDescriptor(t *testing.T) {
+	manager, _ := newManager(&stubClient{}, nil)
+	model := Model{Name: "gpt-5.4", ContextWindowTokens: 128_000, ProviderMaxOutputTokens: 16_384}
+
+	manager.SetClient(&stubClient{}, model)
+
+	if manager.model != model {
+		t.Errorf("model = %+v, want %+v", manager.model, model)
+	}
+}
+
 func TestUsage_Add(t *testing.T) {
 	a := Usage{InputTokens: 10, OutputTokens: 5, CacheReadTokens: 2, CacheWriteTokens: 3}
 	b := Usage{InputTokens: 7, OutputTokens: 4, CacheReadTokens: 1, CacheWriteTokens: 0}
@@ -411,9 +432,8 @@ func TestConversation_ParallelToolExecution(t *testing.T) {
 	store := &stubStore{}
 	mgr := NewConversationManager(ConversationManagerConfig{
 		Client:             client,
-		ModelID:            "test-model",
+		Model:              Model{Name: "test-model", OTLPProvider: OTLPProviderAnthropic},
 		Scope:              NewSessionScope("test-session", "anonymous"),
-		Provider:           OTLPProviderAnthropic,
 		Store:              store,
 		SessionBrowser:     store,
 		PromptProvider:     &stubPromptProvider{"system"},
@@ -463,9 +483,8 @@ func TestConversation_SequentialWhenMaxConcurrentIsOne(t *testing.T) {
 	store := &stubStore{}
 	mgr := NewConversationManager(ConversationManagerConfig{
 		Client:             client,
-		ModelID:            "test-model",
+		Model:              Model{Name: "test-model", OTLPProvider: OTLPProviderAnthropic},
 		Scope:              NewSessionScope("test-session", "anonymous"),
-		Provider:           OTLPProviderAnthropic,
 		Store:              store,
 		SessionBrowser:     store,
 		PromptProvider:     &stubPromptProvider{"system"},
@@ -507,9 +526,8 @@ func TestConversation_OneToolMessagePerExecution(t *testing.T) {
 	store := &stubStore{}
 	mgr := NewConversationManager(ConversationManagerConfig{
 		Client:             client,
-		ModelID:            "test-model",
+		Model:              Model{Name: "test-model", OTLPProvider: OTLPProviderAnthropic},
 		Scope:              NewSessionScope("test-session", "anonymous"),
-		Provider:           OTLPProviderAnthropic,
 		Store:              store,
 		SessionBrowser:     store,
 		PromptProvider:     &stubPromptProvider{"system"},
@@ -569,9 +587,8 @@ func TestConversation_AssistantToolOnlyResponseGetsSummaryAndTurnID(t *testing.T
 	store := &stubStore{}
 	mgr := NewConversationManager(ConversationManagerConfig{
 		Client:             client,
-		ModelID:            "test-model",
+		Model:              Model{Name: "test-model", OTLPProvider: OTLPProviderAnthropic},
 		Scope:              NewSessionScope("test-session", "anonymous"),
-		Provider:           OTLPProviderAnthropic,
 		Store:              store,
 		SessionBrowser:     store,
 		PromptProvider:     &stubPromptProvider{"system"},
@@ -626,9 +643,8 @@ func TestBuildContextMessages_LeanModeUsesHistoryTurns(t *testing.T) {
 
 	mgr := NewConversationManager(ConversationManagerConfig{
 		Client:             &stubClient{},
-		ModelID:            "test-model",
+		Model:              Model{Name: "test-model", OTLPProvider: OTLPProviderAnthropic},
 		Scope:              NewSessionScope("test-session", "anonymous"),
-		Provider:           OTLPProviderAnthropic,
 		Store:              store,
 		SessionBrowser:     store,
 		PromptProvider:     &stubPromptProvider{"system"},
@@ -670,9 +686,8 @@ func TestBuildContextMessages_HybridKeepsLastNDetailedTurns(t *testing.T) {
 
 	mgr := NewConversationManager(ConversationManagerConfig{
 		Client:             &stubClient{},
-		ModelID:            "test-model",
+		Model:              Model{Name: "test-model", OTLPProvider: OTLPProviderAnthropic},
 		Scope:              NewSessionScope("test-session", "anonymous"),
-		Provider:           OTLPProviderAnthropic,
 		Store:              store,
 		SessionBrowser:     store,
 		PromptProvider:     &stubPromptProvider{"system"},
@@ -716,9 +731,8 @@ func TestConversation_ChatUsesExpectedContextSizesByMode(t *testing.T) {
 		store := &stubStore{}
 		mgr := NewConversationManager(ConversationManagerConfig{
 			Client:             client,
-			ModelID:            "test-model",
+			Model:              Model{Name: "test-model", OTLPProvider: OTLPProviderAnthropic},
 			Scope:              NewSessionScope("test-session", "anonymous"),
-			Provider:           OTLPProviderAnthropic,
 			Store:              store,
 			SessionBrowser:     store,
 			PromptProvider:     &stubPromptProvider{"system"},

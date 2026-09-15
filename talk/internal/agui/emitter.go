@@ -10,6 +10,12 @@ import (
 	"github.com/pixime-net/talk/internal/domain"
 )
 
+// Names of the application-specific AG-UI CUSTOM events emitted by the emitter.
+const (
+	tokenUsageEventName = "token_usage"
+	turnUsageEventName  = "turn_usage"
+)
+
 var _ domain.MessageEventHandler = (*AGUIEmitter)(nil)
 
 // AGUIEmitter emits all AG-UI content events (text messages and tool calls)
@@ -35,16 +41,20 @@ func (e *AGUIEmitter) HandleMessageEvent(ctx context.Context, event domain.Messa
 		return nil
 	}
 	if event.Thinking != "" {
-		e.emitReasoning(ctx, event.Thinking)
+		e.emitReasoningEvents(ctx, event.Thinking)
 	}
 	if len(event.ToolCalls) == 0 && event.Content != "" {
-		e.emitTextMessage(ctx, event.Content)
+		e.emitTextMessageEvents(ctx, event.Content)
+	}
+	if event.Kind == domain.CallKindInitial || event.Kind == domain.CallKindToolResult {
+		e.emitCustomEvent(ctx, tokenUsageEventName, domain.NewTokenUsagePayload(event.Model, event.Usage))
 	}
 	return nil
 }
 
-// HandleTurnEvent is a no-op for the SSE emitter.
-func (e *AGUIEmitter) HandleTurnEvent(_ context.Context, _ domain.TurnEvent) error {
+// HandleTurnEvent emits the authoritative token total for a completed turn.
+func (e *AGUIEmitter) HandleTurnEvent(ctx context.Context, event domain.TurnEvent) error {
+	e.emitCustomEvent(ctx, turnUsageEventName, domain.NewTurnUsagePayload(event.Model, event.TotalUsage))
 	return nil
 }
 
@@ -63,8 +73,8 @@ func (e *AGUIEmitter) HandleToolCallEnd(ctx context.Context, event domain.ToolCa
 	return nil
 }
 
-// emitReasoning emits the REASONING_* event sequence for a thinking block.
-func (e *AGUIEmitter) emitReasoning(ctx context.Context, thinking string) {
+// emitReasoningEvents emits the REASONING_* event sequence for a thinking block.
+func (e *AGUIEmitter) emitReasoningEvents(ctx context.Context, thinking string) {
 	id := uuid.New().String()
 	_ = e.writeEvent(ctx, events.NewReasoningStartEvent(id))
 	_ = e.writeEvent(ctx, events.NewReasoningMessageStartEvent(id, "reasoning"))
@@ -73,8 +83,13 @@ func (e *AGUIEmitter) emitReasoning(ctx context.Context, thinking string) {
 	_ = e.writeEvent(ctx, events.NewReasoningEndEvent(id))
 }
 
-// emitTextMessage emits the TEXT_MESSAGE_* event sequence for a final assistant message.
-func (e *AGUIEmitter) emitTextMessage(ctx context.Context, content string) {
+// emitCustomEvent emits a named CUSTOM event carrying an application-specific payload.
+func (e *AGUIEmitter) emitCustomEvent(ctx context.Context, name string, payload any) {
+	_ = e.writeEvent(ctx, events.NewCustomEvent(name, events.WithValue(payload)))
+}
+
+// emitTextMessageEvents emits the TEXT_MESSAGE_* event sequence for a final assistant message.
+func (e *AGUIEmitter) emitTextMessageEvents(ctx context.Context, content string) {
 	id := uuid.New().String()
 	_ = e.writeEvent(ctx, events.NewTextMessageStartEvent(id, events.WithRole("assistant")))
 	_ = e.writeEvent(ctx, events.NewTextMessageContentEvent(id, content))

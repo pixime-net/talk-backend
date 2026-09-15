@@ -13,14 +13,14 @@ type ModelSwitcher interface {
 // App holds the shared session state for the CLI application.
 type App struct {
 	Printer
-	Router       ModelSwitcher
-	Manager      *domain.ConversationManager
-	Scope        domain.SessionScope
-	Messages     domain.MessageStore
-	Sessions     domain.SessionBrowser
-	PP           domain.PromptProvider
-	MCPManager   *mcp.Manager
-	MCPRegistry  mcp.Registry
-	CurrentModel string
-	LR           Reader
+	Router         ModelSwitcher
+	Manager        *domain.ConversationManager
+	Scope          domain.SessionScope
+	Messages       domain.MessageStore
+	Sessions       domain.SessionBrowser
+	PromptProvider domain.PromptProvider
+	MCPManager     *mcp.Manager
+	MCPRegistry    mcp.Registry
+	CurrentModel   string
+	Reader         Reader
 }

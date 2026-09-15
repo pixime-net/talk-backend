@@ -61,8 +61,8 @@ func run(ctx context.Context, modelAlias, systemFile string, pprofEnabled bool) 
 		return err
 	}
 
-	r := router.NewLLMRouter(cfg)
-	client, err := r.Get(modelAlias)
+	llmRouter := router.NewLLMRouter(cfg)
+	client, err := llmRouter.Get(modelAlias)
 	if err != nil {
 		return err
 	}
@@ -72,7 +72,7 @@ func run(ctx context.Context, modelAlias, systemFile string, pprofEnabled bool) 
 		return err
 	}
 
-	pp := buildPromptProvider(systemFile)
+	promptProvider := buildPromptProvider(systemFile)
 
 	sessionID := domain.GenerateSessionID()
 	const userID = "anonymous"
@@ -101,35 +101,34 @@ func run(ctx context.Context, modelAlias, systemFile string, pprofEnabled bool) 
 
 	manager := domain.NewConversationManager(domain.ConversationManagerConfig{
 		Client:             client,
-		ModelID:            modelAlias,
+		Model:              modelDescriptor,
 		Scope:              scope,
-		Provider:           modelDescriptor.OTLPProvider,
 		Store:              messages,
 		SessionBrowser:     browser,
-		PromptProvider:     pp,
+		PromptProvider:     promptProvider,
 		Tools:              mcpManager.Tools,
 		EventHandlers:      handlers,
 		MaxConcurrentTools: cfg.ToolsMaxConcurrent,
 		ContextFullTurns:   cfg.ContextFullTurns,
 	})
 
-	lr, err := NewGoPromptReader(historyFilePath())
+	goPromptReader, err := NewGoPromptReader(historyFilePath())
 	if err != nil {
 		return fmt.Errorf("initializing prompt reader: %w", err)
 	}
 
 	app := &App{
-		Printer:      stdPrinter{},
-		Router:       r,
-		Manager:      manager,
-		Scope:        scope,
-		Messages:     messages,
-		Sessions:     browser,
-		PP:           pp,
-		MCPManager:   mcpManager,
-		MCPRegistry:  mcpRegistry,
-		CurrentModel: modelAlias,
-		LR:           lr,
+		Printer:        stdPrinter{},
+		Router:         llmRouter,
+		Manager:        manager,
+		Scope:          scope,
+		Messages:       messages,
+		Sessions:       browser,
+		PromptProvider: promptProvider,
+		MCPManager:     mcpManager,
+		MCPRegistry:    mcpRegistry,
+		CurrentModel:   modelAlias,
+		Reader:         goPromptReader,
 	}
 
 	return app.runSession(ctx)
@@ -158,7 +157,7 @@ func (a *App) runSession(ctx context.Context) error {
 	a.cmdHelp()
 	for {
 		a.Println()
-		input, err := a.LR.ReadLine(green(bold+"You"+reset+":") + " ")
+		input, err := a.Reader.ReadLine(green(bold+"You"+reset+":") + " ")
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break

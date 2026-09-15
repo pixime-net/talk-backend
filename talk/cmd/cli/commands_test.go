@@ -44,7 +44,7 @@ func TestHandleSlashCommand_Unknown(t *testing.T) {
 func TestHandleSlashCommand_Model(t *testing.T) {
 	p := &spyPrinter{}
 	app := newTestApp(p)
-	app.LR = newScriptReader("999") // invalid → "Invalid choice" path
+	app.Reader = newScriptReader("999") // invalid → "Invalid choice" path
 
 	app.handleSlashCommand(context.Background(), "/model")
 
@@ -122,7 +122,7 @@ func TestHandleSlashCommand_MCP(t *testing.T) {
 func TestCmdPrompt_ShowsPromptText(t *testing.T) {
 	p := &spyPrinter{}
 	app := newTestApp(p)
-	app.PP = &stubPromptProvider{text: "Be concise."}
+	app.PromptProvider = &stubPromptProvider{text: "Be concise."}
 
 	app.cmdPrompt(context.Background())
 
@@ -138,7 +138,7 @@ func TestCmdPrompt_ShowsPromptText(t *testing.T) {
 func TestCmdPrompt_EmptyPrompt(t *testing.T) {
 	p := &spyPrinter{}
 	app := newTestApp(p)
-	app.PP = &stubPromptProvider{text: ""}
+	app.PromptProvider = &stubPromptProvider{text: ""}
 
 	app.cmdPrompt(context.Background())
 
@@ -151,7 +151,7 @@ func TestCmdPrompt_EmptyPrompt(t *testing.T) {
 func TestCmdPrompt_Error(t *testing.T) {
 	p := &spyPrinter{}
 	app := newTestApp(p)
-	app.PP = &stubPromptProvider{err: context.DeadlineExceeded}
+	app.PromptProvider = &stubPromptProvider{err: context.DeadlineExceeded}
 
 	app.cmdPrompt(context.Background())
 

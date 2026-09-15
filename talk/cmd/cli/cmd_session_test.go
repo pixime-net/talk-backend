@@ -83,7 +83,7 @@ func TestCmdSession_DefaultIsList(t *testing.T) {
 		{ID: app.Scope.SessionID(), Title: "Chat", CreatedAt: time.Date(2025, 3, 1, 9, 0, 0, 0, time.UTC), TurnCount: 2},
 	}
 	app.Sessions = sb
-	app.LR = newScriptReader("") // cancel
+	app.Reader = newScriptReader("") // cancel
 
 	app.cmdSession(context.Background(), "")
 
@@ -110,7 +110,7 @@ func TestCmdSession_UnknownSubcommand(t *testing.T) {
 func TestCmdSessionList_Empty(t *testing.T) {
 	p := &spyPrinter{}
 	app := newTestApp(p)
-	app.LR = newScriptReader("")
+	app.Reader = newScriptReader("")
 
 	app.cmdSessionList(context.Background())
 
@@ -129,7 +129,7 @@ func TestCmdSessionList_ShowsSessionsWithTitleAndTurns(t *testing.T) {
 		{ID: "other-0000-0000-0000-000000000000", Title: "", CreatedAt: time.Date(2025, 3, 2, 10, 0, 0, 0, time.UTC), TurnCount: 1},
 	}
 	app.Sessions = sb
-	app.LR = newScriptReader("")
+	app.Reader = newScriptReader("")
 
 	app.cmdSessionList(context.Background())
 
@@ -157,7 +157,7 @@ func TestCmdSessionList_SwitchByNumber(t *testing.T) {
 		{ID: "bbbb0000-0000-0000-0000-000000000000", Title: "second"},
 	}
 	app.Sessions = sb
-	app.LR = newScriptReader("2")
+	app.Reader = newScriptReader("2")
 
 	app.cmdSessionList(context.Background())
 
@@ -178,7 +178,7 @@ func TestCmdSessionList_NewFromMenu(t *testing.T) {
 		{ID: "aaaa0000-0000-0000-0000-000000000000", Title: "old"},
 	}
 	app.Sessions = sb
-	app.LR = newScriptReader("new")
+	app.Reader = newScriptReader("new")
 
 	app.cmdSessionList(context.Background())
 
@@ -196,7 +196,7 @@ func TestCmdSessionList_InvalidChoice(t *testing.T) {
 		{ID: "aaaa0000-0000-0000-0000-000000000000"},
 	}
 	app.Sessions = sb
-	app.LR = newScriptReader("99")
+	app.Reader = newScriptReader("99")
 
 	app.cmdSessionList(context.Background())
 
@@ -214,7 +214,7 @@ func TestCmdSessionList_Cancel(t *testing.T) {
 		{ID: "aaaa0000-0000-0000-0000-000000000000"},
 	}
 	app.Sessions = sb
-	app.LR = newScriptReader("")
+	app.Reader = newScriptReader("")
 
 	app.cmdSessionList(context.Background())
 
@@ -265,7 +265,7 @@ func TestCmdSessionRemove_RemovesSession(t *testing.T) {
 		{ID: "other-0000-0000-0000-000000000000", Title: "other one", CreatedAt: time.Date(2025, 3, 2, 10, 0, 0, 0, time.UTC), TurnCount: 1},
 	}
 	app.Sessions = sb
-	app.LR = newScriptReader("2") // select the non-current session
+	app.Reader = newScriptReader("2") // select the non-current session
 
 	app.cmdSessionRemove(context.Background())
 
@@ -287,7 +287,7 @@ func TestCmdSessionRemove_CannotRemoveCurrent(t *testing.T) {
 		{ID: "other-0000-0000-0000-000000000000", Title: "other one"},
 	}
 	app.Sessions = sb
-	app.LR = newScriptReader("1") // select the current session
+	app.Reader = newScriptReader("1") // select the current session
 
 	app.cmdSessionRemove(context.Background())
 
@@ -308,7 +308,7 @@ func TestCmdSessionRemove_Cancel(t *testing.T) {
 		{ID: "other-0000-0000-0000-000000000000", Title: "x"},
 	}
 	app.Sessions = sb
-	app.LR = newScriptReader("")
+	app.Reader = newScriptReader("")
 
 	app.cmdSessionRemove(context.Background())
 
@@ -325,7 +325,7 @@ func TestCmdSessionRemove_InvalidChoice(t *testing.T) {
 		{ID: "other-0000-0000-0000-000000000000", Title: "x"},
 	}
 	app.Sessions = sb
-	app.LR = newScriptReader("99")
+	app.Reader = newScriptReader("99")
 
 	app.cmdSessionRemove(context.Background())
 
@@ -345,7 +345,7 @@ func TestCmdSession_ListSubcommand(t *testing.T) {
 		{ID: app.Scope.SessionID(), Title: "my session", CreatedAt: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)},
 	}
 	app.Sessions = sb
-	app.LR = newScriptReader("") // cancel
+	app.Reader = newScriptReader("") // cancel
 
 	app.cmdSession(context.Background(), "list")
 
@@ -416,7 +416,7 @@ func TestCmdSessionList_SwitchWithManager(t *testing.T) {
 		{ID: "target-000-0000-0000-000000000000", Title: "target"},
 	}
 	app.Sessions = sb
-	app.LR = newScriptReader("1")
+	app.Reader = newScriptReader("1")
 	mgr := domain.NewConversationManager(domain.ConversationManagerConfig{
 		Scope:          app.Scope,
 		Store:          newFakeStore(),
@@ -439,7 +439,7 @@ func TestCmdSessionList_SwitchUntitledSession(t *testing.T) {
 		{ID: "untitled-00-0000-0000-000000000000", Title: ""},
 	}
 	app.Sessions = sb
-	app.LR = newScriptReader("1")
+	app.Reader = newScriptReader("1")
 
 	app.cmdSessionList(context.Background())
 
@@ -472,7 +472,7 @@ func TestCmdSessionRemove_DeleteError(t *testing.T) {
 	}
 	sb.deleteErr = fmt.Errorf("delete failed")
 	app.Sessions = sb
-	app.LR = newScriptReader("2")
+	app.Reader = newScriptReader("2")
 
 	app.cmdSessionRemove(context.Background())
 
@@ -490,7 +490,7 @@ func TestCmdSessionRemove_UntitledSession(t *testing.T) {
 		{ID: "other-0000-0000-0000-000000000000", Title: ""},
 	}
 	app.Sessions = sb
-	app.LR = newScriptReader("2")
+	app.Reader = newScriptReader("2")
 
 	app.cmdSessionRemove(context.Background())
 

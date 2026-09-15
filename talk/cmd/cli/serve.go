@@ -214,9 +214,8 @@ func buildChatFunc(
 		scope := domain.NewSessionScope(threadID, "anonymous")
 		manager := domain.NewConversationManager(domain.ConversationManagerConfig{
 			Client:             client,
-			ModelID:            modelAlias,
+			Model:              modelDescriptor,
 			Scope:              scope,
-			Provider:           modelDescriptor.OTLPProvider,
 			Store:              messages,
 			SessionBrowser:     browser,
 			PromptProvider:     pp,

@@ -35,8 +35,7 @@ const (
 type ConversationManager struct {
 	sessionScope   SessionScope
 	llmClient      LlmClient
-	modelID        string
-	otlpProvider   OTLPProvider
+	model          Model
 	messageStore   MessageStore
 	promptProvider PromptProvider
 	toolsProvider  func() []Tool
@@ -49,9 +48,8 @@ type ConversationManager struct {
 // ConversationManagerConfig groups all parameters for creating a ConversationManager.
 type ConversationManagerConfig struct {
 	Client             LlmClient
-	ModelID            string
+	Model              Model
 	Scope              SessionScope
-	Provider           OTLPProvider
 	Store              MessageStore
 	SessionBrowser     SessionBrowser
 	PromptProvider     PromptProvider
@@ -71,8 +69,7 @@ func NewConversationManager(cfg ConversationManagerConfig) *ConversationManager 
 	return &ConversationManager{
 		sessionScope:   cfg.Scope,
 		llmClient:      cfg.Client,
-		modelID:        cfg.ModelID,
-		otlpProvider:   cfg.Provider,
+		model:          cfg.Model,
 		messageStore:   cfg.Store,
 		promptProvider: cfg.PromptProvider,
 		toolsProvider:  cfg.Tools,
@@ -89,9 +86,9 @@ func (m *ConversationManager) SetScope(scope SessionScope) {
 }
 
 // SetClient replaces the active LLM client and model without resetting the conversation history.
-func (m *ConversationManager) SetClient(client LlmClient, modelID string) {
+func (m *ConversationManager) SetClient(client LlmClient, model Model) {
 	m.llmClient = client
-	m.modelID = modelID
+	m.model = model
 }
 
 // SetThinkingEffort changes the thinking/reasoning level for subsequent LLM calls.
@@ -117,7 +114,7 @@ func (m *ConversationManager) Chat(ctx context.Context, userInput string) (strin
 	// turnSpanID is used to correlate all events for this conversation turn in observability. It is the parent span for all API call spans in this turn.
 	turnSpanID := GenerateSpanID()
 	turnStartedAt := time.Now()
-	model := Model{Name: m.modelID, OTLPProvider: m.otlpProvider}
+	model := m.model
 	// Store the user message in the conversation history before processing to ensure it's included in the context
 	// for the first API call and in observability.
 	if err := m.messageHandler.HandleMessageEvent(ctx, MessageEvent{

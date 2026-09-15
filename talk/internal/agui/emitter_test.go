@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -462,4 +463,306 @@ func assertSSEEventType(t *testing.T, m map[string]any, want events.EventType) {
 	if got != string(want) {
 		t.Errorf("event type = %q, want %q", got, want)
 	}
+}
+
+func TestAGUIEmitter_HandleMessageEvent_EmitsTokenUsagePerAssistantResponse(t *testing.T) {
+	rec := httptest.NewRecorder()
+	sse, err := NewSSEWriter(rec, nil)
+	if err != nil {
+		t.Fatalf("creating SSEWriter: %v", err)
+	}
+	emitter := NewAGUIEmitter(sse, nil)
+	model := domain.Model{
+		Name:                    "sonnet-4.6",
+		ContextWindowTokens:     200_000,
+		ProviderMaxOutputTokens: 64_000,
+	}
+
+	eventsToEmit := []domain.MessageEvent{
+		{
+			Message: domain.Message{Role: domain.RoleAssistant, ToolCalls: []domain.ToolCall{{ID: "tc-1", Name: "search"}}},
+			Model:   model,
+			Kind:    domain.CallKindInitial,
+			Usage:   domain.Usage{InputTokens: 100, OutputTokens: 20, CacheReadTokens: 10},
+		},
+		{
+			Message: domain.Message{Role: domain.RoleTool, Content: "result"},
+			Model:   model,
+			Kind:    domain.CallKindToolResult,
+		},
+		{
+			Message: domain.Message{Role: domain.RoleAssistant, Content: "done"},
+			Model:   model,
+			Kind:    domain.CallKindToolResult,
+			Usage:   domain.Usage{InputTokens: 150, OutputTokens: 30, ReasoningTokens: 5},
+		},
+	}
+	for _, event := range eventsToEmit {
+		if err := emitter.HandleMessageEvent(context.Background(), event); err != nil {
+			t.Fatalf("HandleMessageEvent error: %v", err)
+		}
+	}
+
+	eventData := parseSSEData(t, rec.Body.Bytes())
+	usageEvents := customEventsNamed(eventData, "token_usage")
+	if len(usageEvents) != 2 {
+		t.Fatalf("got %d token_usage events, want 2", len(usageEvents))
+	}
+	first := customEventValue(t, usageEvents[0])
+	second := customEventValue(t, usageEvents[1])
+	if first["input_tokens"] != float64(100) || second["input_tokens"] != float64(150) {
+		t.Errorf("per-call input tokens = (%v, %v), want (100, 150)", first["input_tokens"], second["input_tokens"])
+	}
+	if first["model"] != "sonnet-4.6" || first["context_window_tokens"] != float64(200_000) {
+		t.Errorf("first payload model metadata = %v", first)
+	}
+	if first["output_tokens"] != float64(20) ||
+		first["cache_read_tokens"] != float64(10) ||
+		first["provider_max_output_tokens"] != float64(64_000) {
+		t.Errorf("first payload token details = %v", first)
+	}
+	if first["context_ratio"] != 0.0005 {
+		t.Errorf("context_ratio = %v, want 0.0005", first["context_ratio"])
+	}
+	if first["output_ratio"] != 0.0003125 {
+		t.Errorf("output_ratio = %v, want 0.0003125", first["output_ratio"])
+	}
+	if second["output_tokens"] != float64(30) || second["reasoning_tokens"] != float64(5) {
+		t.Errorf("second payload token details = %v", second)
+	}
+	if eventData[len(eventData)-1]["name"] != "token_usage" {
+		t.Errorf("last event = %v, want token_usage after text events", eventData[len(eventData)-1])
+	}
+}
+
+func TestAGUIEmitter_HandleTurnEvent_EmitsUsageForEveryStatus(t *testing.T) {
+	for _, status := range []string{domain.TurnStatusComplete, domain.TurnStatusIncomplete} {
+		t.Run(status, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			sse, err := NewSSEWriter(rec, nil)
+			if err != nil {
+				t.Fatalf("creating SSEWriter: %v", err)
+			}
+			emitter := NewAGUIEmitter(sse, nil)
+			event := domain.TurnEvent{
+				Model:      domain.Model{Name: "gpt-5.4"},
+				TotalUsage: domain.Usage{InputTokens: 250, OutputTokens: 50, CacheWriteTokens: 4},
+				Status:     status,
+			}
+
+			if err := emitter.HandleTurnEvent(context.Background(), event); err != nil {
+				t.Fatalf("HandleTurnEvent error: %v", err)
+			}
+
+			eventData := parseSSEData(t, rec.Body.Bytes())
+			usageEvents := customEventsNamed(eventData, "turn_usage")
+			if len(usageEvents) != 1 {
+				t.Fatalf("got %d turn_usage events, want 1", len(usageEvents))
+			}
+			value := customEventValue(t, usageEvents[0])
+			if value["input_tokens"] != float64(250) || value["output_tokens"] != float64(50) {
+				t.Errorf("turn usage = %v, want summed counts", value)
+			}
+			if _, ok := value["context_ratio"]; ok {
+				t.Error("turn_usage unexpectedly contains context_ratio")
+			}
+		})
+	}
+}
+
+func TestConversationManager_EmitsAuthoritativeTurnUsage(t *testing.T) {
+	tests := []struct {
+		name            string
+		responses       []*domain.Message
+		usages          []domain.Usage
+		wantErr         error
+		wantTokenEvents int
+		wantInput       float64
+		wantOutput      float64
+	}{
+		{
+			name: "completed multi-call turn",
+			responses: []*domain.Message{
+				{Role: domain.RoleAssistant, ToolCalls: []domain.ToolCall{{ID: "call-1", Name: "test_tool"}}},
+				{Role: domain.RoleAssistant, Content: "done"},
+			},
+			usages: []domain.Usage{
+				{InputTokens: 10, OutputTokens: 5},
+				{InputTokens: 20, OutputTokens: 8},
+			},
+			wantTokenEvents: 2,
+			wantInput:       30,
+			wantOutput:      13,
+		},
+		{
+			name: "interrupted turn",
+			responses: []*domain.Message{
+				{Role: domain.RoleAssistant, ToolCalls: []domain.ToolCall{{ID: "call-1", Name: "test_tool"}}},
+				{Role: domain.RoleAssistant, ToolCalls: []domain.ToolCall{{ID: "call-2", Name: "test_tool"}}},
+				{Role: domain.RoleAssistant, ToolCalls: []domain.ToolCall{{ID: "call-3", Name: "test_tool"}}},
+				{Role: domain.RoleAssistant, ToolCalls: []domain.ToolCall{{ID: "call-4", Name: "test_tool"}}},
+				{Role: domain.RoleAssistant, ToolCalls: []domain.ToolCall{{ID: "call-5", Name: "test_tool"}}},
+			},
+			usages: []domain.Usage{
+				{InputTokens: 1, OutputTokens: 1},
+				{InputTokens: 2, OutputTokens: 1},
+				{InputTokens: 3, OutputTokens: 1},
+				{InputTokens: 4, OutputTokens: 1},
+				{InputTokens: 5, OutputTokens: 1},
+			},
+			wantErr:         domain.ErrMaxToolIterations,
+			wantTokenEvents: 5,
+			wantInput:       15,
+			wantOutput:      5,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			manager := newUsageTestConversationManager(t, rec, tt.responses, tt.usages)
+
+			_, err := manager.Chat(context.Background(), "test")
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Chat error = %v, want %v", err, tt.wantErr)
+			}
+
+			eventData := parseSSEData(t, rec.Body.Bytes())
+			if got := len(customEventsNamed(eventData, "token_usage")); got != tt.wantTokenEvents {
+				t.Errorf("token_usage events = %d, want %d", got, tt.wantTokenEvents)
+			}
+			turnUsageEvents := customEventsNamed(eventData, "turn_usage")
+			if len(turnUsageEvents) != 1 {
+				t.Fatalf("turn_usage events = %d, want 1", len(turnUsageEvents))
+			}
+			value := customEventValue(t, turnUsageEvents[0])
+			if value["input_tokens"] != tt.wantInput || value["output_tokens"] != tt.wantOutput {
+				t.Errorf("turn_usage = %v, want input=%v output=%v", value, tt.wantInput, tt.wantOutput)
+			}
+		})
+	}
+}
+
+type usageTestClient struct {
+	responses []*domain.Message
+	usages    []domain.Usage
+	call      int
+}
+
+func (c *usageTestClient) Complete(
+	_ context.Context,
+	_ string,
+	_ []domain.Message,
+	_ []domain.Tool,
+	_ domain.CompletionOptions,
+) (*domain.Message, domain.Usage, error) {
+	if c.call >= len(c.responses) {
+		return nil, domain.Usage{}, errors.New("no test response available")
+	}
+	response := c.responses[c.call]
+	usage := c.usages[c.call]
+	c.call++
+	return response, usage, nil
+}
+
+type usageTestStore struct {
+	messages map[string][]domain.Message
+}
+
+func (s *usageTestStore) HandleMessageEvent(_ context.Context, event domain.MessageEvent) error {
+	if s.messages == nil {
+		s.messages = make(map[string][]domain.Message)
+	}
+	sessionID := event.SessionScope.SessionID()
+	s.messages[sessionID] = append(s.messages[sessionID], event.Message)
+	return nil
+}
+
+func (*usageTestStore) HandleTurnEvent(context.Context, domain.TurnEvent) error { return nil }
+func (*usageTestStore) HandleToolCallStart(context.Context, domain.ToolCallEvent) error {
+	return nil
+}
+func (*usageTestStore) HandleToolCallEnd(context.Context, domain.ToolCallEndEvent) error {
+	return nil
+}
+func (s *usageTestStore) AllMessages(_ context.Context, sessionID string) ([]domain.Message, error) {
+	return s.messages[sessionID], nil
+}
+func (s *usageTestStore) ClearMessages(_ context.Context, sessionID string) error {
+	delete(s.messages, sessionID)
+	return nil
+}
+func (*usageTestStore) ListSessions(context.Context, string) ([]domain.SessionSummary, error) {
+	return nil, nil
+}
+func (*usageTestStore) LoadHistoryTurnsFromSession(context.Context, string) ([]domain.HistoryTurn, error) {
+	return nil, nil
+}
+func (*usageTestStore) DeleteSession(context.Context, string) error { return nil }
+
+type usageTestPromptProvider struct{}
+
+func (usageTestPromptProvider) SystemPrompt(context.Context) (string, error) {
+	return "system", nil
+}
+
+type usageTestTool struct{}
+
+func (usageTestTool) Name() string        { return "test_tool" }
+func (usageTestTool) Description() string { return "test tool" }
+func (usageTestTool) InputSchema() (map[string]any, error) {
+	return map[string]any{"type": "object"}, nil
+}
+func (usageTestTool) OutputSchema() (map[string]any, error) {
+	return map[string]any{"type": "object"}, nil
+}
+func (usageTestTool) Execute(context.Context, map[string]any) (domain.ToolOutput, error) {
+	return domain.ToolOutput{Model: map[string]any{"ok": true}}, nil
+}
+
+func newUsageTestConversationManager(
+	t *testing.T,
+	rec *httptest.ResponseRecorder,
+	responses []*domain.Message,
+	usages []domain.Usage,
+) *domain.ConversationManager {
+	t.Helper()
+	sse, err := NewSSEWriter(rec, nil)
+	if err != nil {
+		t.Fatalf("creating SSEWriter: %v", err)
+	}
+	store := &usageTestStore{}
+	emitter := NewAGUIEmitter(sse, nil)
+	handlers := domain.NewMessageEventHandlers([][]domain.MessageEventHandler{{store}, {emitter}})
+	return domain.NewConversationManager(domain.ConversationManagerConfig{
+		Client:             &usageTestClient{responses: responses, usages: usages},
+		Model:              domain.Model{Name: "test-model", ContextWindowTokens: 100, ProviderMaxOutputTokens: 50},
+		Scope:              domain.NewSessionScope("test-session", "anonymous"),
+		Store:              store,
+		SessionBrowser:     store,
+		PromptProvider:     usageTestPromptProvider{},
+		Tools:              func() []domain.Tool { return []domain.Tool{usageTestTool{}} },
+		EventHandlers:      handlers,
+		MaxConcurrentTools: 1,
+		ContextFullTurns:   -1,
+	})
+}
+
+func customEventsNamed(eventData []map[string]any, name string) []map[string]any {
+	matched := make([]map[string]any, 0)
+	for _, event := range eventData {
+		if event["type"] == "CUSTOM" && event["name"] == name {
+			matched = append(matched, event)
+		}
+	}
+	return matched
+}
+
+func customEventValue(t *testing.T, event map[string]any) map[string]any {
+	t.Helper()
+	value, ok := event["value"].(map[string]any)
+	if !ok {
+		t.Fatalf("custom event value = %T, want object", event["value"])
+	}
+	return value
 }

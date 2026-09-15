@@ -126,7 +126,7 @@ func TestCmdMCPRemove_WithChoice(t *testing.T) {
 	mgr := mcp.NewManager(reg)
 	app.MCPManager = mgr
 	app.MCPRegistry = reg
-	app.LR = newScriptReader("1")
+	app.Reader = newScriptReader("1")
 
 	app.cmdMCPRemove(context.Background())
 
@@ -150,7 +150,7 @@ func TestCmdMCPRemove_InvalidChoice(t *testing.T) {
 	mgr := mcp.NewManager(reg)
 	app.MCPManager = mgr
 	app.MCPRegistry = reg
-	app.LR = newScriptReader("99")
+	app.Reader = newScriptReader("99")
 
 	app.cmdMCPRemove(context.Background())
 
@@ -171,7 +171,7 @@ func TestCmdMCPRemove_Cancel(t *testing.T) {
 	mgr := mcp.NewManager(reg)
 	app.MCPManager = mgr
 	app.MCPRegistry = reg
-	app.LR = newScriptReader("") // empty → cancel
+	app.Reader = newScriptReader("") // empty → cancel
 
 	app.cmdMCPRemove(context.Background())
 
@@ -187,7 +187,7 @@ func TestCmdMCPAdd_CancelledAtName(t *testing.T) {
 	mgr := mcp.NewManager(reg)
 	app.MCPManager = mgr
 	app.MCPRegistry = reg
-	app.LR = newScriptReader("") // empty name → cancel
+	app.Reader = newScriptReader("") // empty name → cancel
 
 	app.cmdMCPAdd(context.Background())
 
@@ -204,7 +204,7 @@ func TestCmdMCPAdd_CancelledAtURL(t *testing.T) {
 	mgr := mcp.NewManager(reg)
 	app.MCPManager = mgr
 	app.MCPRegistry = reg
-	app.LR = newScriptReader("myserver", "") // name ok, empty URL → cancel
+	app.Reader = newScriptReader("myserver", "") // name ok, empty URL → cancel
 
 	app.cmdMCPAdd(context.Background())
 
@@ -221,7 +221,7 @@ func TestCmdMCPAdd_InvalidAuthType(t *testing.T) {
 	mgr := mcp.NewManager(reg)
 	app.MCPManager = mgr
 	app.MCPRegistry = reg
-	app.LR = newScriptReader("myserver", "http://localhost", "badauth")
+	app.Reader = newScriptReader("myserver", "http://localhost", "badauth")
 
 	app.cmdMCPAdd(context.Background())
 
@@ -239,7 +239,7 @@ func TestCmdMCPAdd_NoneAuth_ConnectionFails(t *testing.T) {
 	app.MCPManager = mgr
 	app.MCPRegistry = reg
 	// name, url, auth=none → will try to connect and fail
-	app.LR = newScriptReader("myserver", "http://127.0.0.1:1", "none")
+	app.Reader = newScriptReader("myserver", "http://127.0.0.1:1", "none")
 
 	app.cmdMCPAdd(context.Background())
 
@@ -260,7 +260,7 @@ func TestCmdMCPAdd_APIKeyAuth_ConnectionFails(t *testing.T) {
 	app.MCPManager = mgr
 	app.MCPRegistry = reg
 	// name, url, auth=apikey, key → connect fails
-	app.LR = newScriptReader("myserver", "http://127.0.0.1:1", "apikey", "secret123")
+	app.Reader = newScriptReader("myserver", "http://127.0.0.1:1", "apikey", "secret123")
 
 	app.cmdMCPAdd(context.Background())
 
@@ -278,7 +278,7 @@ func TestCmdMCPAdd_APIKeyAuth_CancelledAtKey(t *testing.T) {
 	app.MCPManager = mgr
 	app.MCPRegistry = reg
 	// name, url, auth=apikey → then scriptReader exhausted → error on ReadLine
-	app.LR = newScriptReader("myserver", "http://localhost", "apikey")
+	app.Reader = newScriptReader("myserver", "http://localhost", "apikey")
 
 	app.cmdMCPAdd(context.Background())
 
@@ -296,7 +296,7 @@ func TestCmdMCPAdd_OAuthAuth_ConnectionFails(t *testing.T) {
 	app.MCPManager = mgr
 	app.MCPRegistry = reg
 	// name, url, auth=oauth, clientID, secret, tokenURL, scopes
-	app.LR = newScriptReader("myserver", "http://127.0.0.1:1", "oauth", "cid", "csecret", "http://token", "read,write")
+	app.Reader = newScriptReader("myserver", "http://127.0.0.1:1", "oauth", "cid", "csecret", "http://token", "read,write")
 
 	app.cmdMCPAdd(context.Background())
 
@@ -314,7 +314,7 @@ func TestCmdMCPAdd_DefaultAuth(t *testing.T) {
 	app.MCPManager = mgr
 	app.MCPRegistry = reg
 	// name, url, auth="" (empty → defaults to apikey), key → connect fails
-	app.LR = newScriptReader("myserver", "http://127.0.0.1:1", "", "mykey")
+	app.Reader = newScriptReader("myserver", "http://127.0.0.1:1", "", "mykey")
 
 	app.cmdMCPAdd(context.Background())
 

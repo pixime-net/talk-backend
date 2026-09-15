@@ -51,7 +51,7 @@ func (a *App) cmdQuit() {
 }
 
 func (a *App) cmdPrompt(ctx context.Context) {
-	text, err := a.PP.SystemPrompt(ctx)
+	text, err := a.PromptProvider.SystemPrompt(ctx)
 	if err != nil {
 		a.Errorf("%s%s\n", red("Error loading prompt: "), err.Error())
 		return

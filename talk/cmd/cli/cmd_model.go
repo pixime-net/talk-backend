@@ -23,7 +23,7 @@ func (a *App) cmdModel() {
 		}
 	}
 
-	choice, err := a.LR.ReadLine(fmt.Sprintf("Choose [1-%d]: ", len(models)))
+	choice, err := a.Reader.ReadLine(fmt.Sprintf("Choose [1-%d]: ", len(models)))
 	if err != nil {
 		return
 	}
@@ -39,7 +39,12 @@ func (a *App) cmdModel() {
 		a.Errorf("%s%s\n", red("Error building client: "), err.Error())
 		return
 	}
-	a.Manager.SetClient(client, string(selected))
+	modelDescriptor, err := domain.Lookup(selected)
+	if err != nil {
+		a.Errorf("%s%s\n", red("Error resolving model: "), err.Error())
+		return
+	}
+	a.Manager.SetClient(client, modelDescriptor)
 	a.CurrentModel = string(selected)
 	a.Printf("Switched to %s.\n", green(string(selected)))
 }

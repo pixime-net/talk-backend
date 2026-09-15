@@ -67,7 +67,7 @@ func (a *App) cmdMCPList() {
 }
 
 func (a *App) cmdMCPAdd(ctx context.Context) {
-	name, err := a.LR.ReadLine("Server name (lowercase letters, digits, hyphens; 24 max): ")
+	name, err := a.Reader.ReadLine("Server name (lowercase letters, digits, hyphens; 24 max): ")
 	if err != nil || strings.TrimSpace(name) == "" {
 		a.Println(yellow(cancelled))
 		return
@@ -89,14 +89,14 @@ func (a *App) cmdMCPAdd(ctx context.Context) {
 		return
 	}
 
-	url, err := a.LR.ReadLine("Server URL: ")
+	url, err := a.Reader.ReadLine("Server URL: ")
 	if err != nil || strings.TrimSpace(url) == "" {
 		a.Println(yellow(cancelled))
 		return
 	}
 	url = strings.TrimSpace(url)
 
-	authChoice, err := a.LR.ReadLine("Auth type [none/apikey/oauth] (default: apikey): ")
+	authChoice, err := a.Reader.ReadLine("Auth type [none/apikey/oauth] (default: apikey): ")
 	if err != nil {
 		a.Println(yellow(cancelled))
 		return
@@ -160,17 +160,17 @@ func (a *App) buildMCPAuthConfig(cfg *mcp.ServerConfig) bool {
 	case mcp.AuthTypeNone:
 		// No credentials needed.
 	case mcp.AuthTypeAPIKey:
-		key, err := a.LR.ReadLineRaw("API Key: ")
+		key, err := a.Reader.ReadLineRaw("API Key: ")
 		if err != nil {
 			a.Println(yellow(cancelled))
 			return false
 		}
 		cfg.APIKey = strings.TrimSpace(key)
 	case mcp.AuthTypeOAuth:
-		clientID, _ := a.LR.ReadLineRaw("Client ID: ")
-		clientSecret, _ := a.LR.ReadLineRaw("Client Secret: ")
-		tokenURL, _ := a.LR.ReadLine("Token URL: ")
-		scopes, _ := a.LR.ReadLine("Scopes (comma-separated): ")
+		clientID, _ := a.Reader.ReadLineRaw("Client ID: ")
+		clientSecret, _ := a.Reader.ReadLineRaw("Client Secret: ")
+		tokenURL, _ := a.Reader.ReadLine("Token URL: ")
+		scopes, _ := a.Reader.ReadLine("Scopes (comma-separated): ")
 		cfg.OAuth = &mcp.OAuthConfig{
 			ClientID:     strings.TrimSpace(clientID),
 			ClientSecret: strings.TrimSpace(clientSecret),
@@ -204,7 +204,7 @@ func (a *App) cmdMCPRemove(ctx context.Context) {
 		a.Printf("  [%d] %s  %s\n", i+1, cyan(s.Name), faint(s.URL))
 	}
 
-	choice, err := a.LR.ReadLine(fmt.Sprintf("Remove [1-%d] (Enter to cancel): ", len(servers)))
+	choice, err := a.Reader.ReadLine(fmt.Sprintf("Remove [1-%d] (Enter to cancel): ", len(servers)))
 	if err != nil || strings.TrimSpace(choice) == "" {
 		return
 	}

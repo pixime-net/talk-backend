@@ -78,7 +78,7 @@ func (a *App) cmdSessionList(ctx context.Context) {
 
 	a.printSessions(sessions)
 
-	choice, err := a.LR.ReadLine(fmt.Sprintf("Choose [1-%d] or 'new' (Enter to cancel): ", len(sessions)))
+	choice, err := a.Reader.ReadLine(fmt.Sprintf("Choose [1-%d] or 'new' (Enter to cancel): ", len(sessions)))
 	if err != nil || strings.TrimSpace(choice) == "" {
 		return
 	}
@@ -118,7 +118,7 @@ func (a *App) cmdSessionRemove(ctx context.Context) {
 	a.Println("\n" + emphasize("Sessions:"))
 	a.printSessions(sessions)
 
-	choice, err := a.LR.ReadLine(fmt.Sprintf("Remove [1-%d] (Enter to cancel): ", len(sessions)))
+	choice, err := a.Reader.ReadLine(fmt.Sprintf("Remove [1-%d] (Enter to cancel): ", len(sessions)))
 	if err != nil || strings.TrimSpace(choice) == "" {
 		return
 	}

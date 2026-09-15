@@ -15,8 +15,8 @@ func TestCmdModel_ValidSelection(t *testing.T) {
 	store := newFakeStore()
 	app.Messages = store
 	app.Manager = domain.NewConversationManager(domain.ConversationManagerConfig{
-		Client: fakeLlmClient{}, ModelID: "sonnet-4.6", Scope: app.Scope,
-		Provider: domain.OTLPProviderAnthropic, Store: store,
+		Client: fakeLlmClient{}, Model: domain.Model{Name: "sonnet-4.6", OTLPProvider: domain.OTLPProviderAnthropic}, Scope: app.Scope,
+		Store:          store,
 		SessionBrowser: newFakeSessionBrowser(), PromptProvider: &stubPromptProvider{},
 		Tools: func() []domain.Tool { return nil }, MaxConcurrentTools: 1, ContextFullTurns: -1,
 	})
@@ -35,7 +35,7 @@ func TestCmdModel_ValidSelection(t *testing.T) {
 		t.Skip("need at least 2 models")
 	}
 
-	app.LR = newScriptReader(fmt.Sprintf("%d", targetIdx))
+	app.Reader = newScriptReader(fmt.Sprintf("%d", targetIdx))
 	app.cmdModel()
 
 	out := p.Output()
@@ -50,7 +50,7 @@ func TestCmdModel_ValidSelection(t *testing.T) {
 func TestCmdModel_InvalidChoice(t *testing.T) {
 	p := &spyPrinter{}
 	app := newTestApp(p)
-	app.LR = newScriptReader("999")
+	app.Reader = newScriptReader("999")
 
 	app.cmdModel()
 
@@ -63,7 +63,7 @@ func TestCmdModel_InvalidChoice(t *testing.T) {
 func TestCmdModel_NonNumericChoice(t *testing.T) {
 	p := &spyPrinter{}
 	app := newTestApp(p)
-	app.LR = newScriptReader("abc")
+	app.Reader = newScriptReader("abc")
 
 	app.cmdModel()
 
@@ -80,14 +80,14 @@ func TestCmdModel_RouterError(t *testing.T) {
 	store := newFakeStore()
 	app.Messages = store
 	app.Manager = domain.NewConversationManager(domain.ConversationManagerConfig{
-		Client: fakeLlmClient{}, ModelID: "sonnet-4.6", Scope: app.Scope,
-		Provider: domain.OTLPProviderAnthropic, Store: store,
+		Client: fakeLlmClient{}, Model: domain.Model{Name: "sonnet-4.6", OTLPProvider: domain.OTLPProviderAnthropic}, Scope: app.Scope,
+		Store:          store,
 		SessionBrowser: newFakeSessionBrowser(), PromptProvider: &stubPromptProvider{},
 		Tools: func() []domain.Tool { return nil }, MaxConcurrentTools: 1, ContextFullTurns: -1,
 	})
 
 	// Pick any valid model index
-	app.LR = newScriptReader("1")
+	app.Reader = newScriptReader("1")
 	app.cmdModel()
 
 	errOut := p.ErrOutput()
@@ -99,7 +99,7 @@ func TestCmdModel_RouterError(t *testing.T) {
 func TestCmdModel_ListsCurrentModel(t *testing.T) {
 	p := &spyPrinter{}
 	app := newTestApp(p)
-	app.LR = newScriptReader("") // empty → error → returns early
+	app.Reader = newScriptReader("") // empty → error → returns early
 
 	app.cmdModel()
 

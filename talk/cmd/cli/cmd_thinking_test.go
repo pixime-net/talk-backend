@@ -12,8 +12,8 @@ func newThinkingTestApp(p *spyPrinter) *App {
 	store := newFakeStore()
 	app.Messages = store
 	app.Manager = domain.NewConversationManager(domain.ConversationManagerConfig{
-		Client: fakeLlmClient{}, ModelID: "sonnet-4.6", Scope: app.Scope,
-		Provider: domain.OTLPProviderAnthropic, Store: store,
+		Client: fakeLlmClient{}, Model: domain.Model{Name: "sonnet-4.6", OTLPProvider: domain.OTLPProviderAnthropic}, Scope: app.Scope,
+		Store:          store,
 		SessionBrowser: newFakeSessionBrowser(), PromptProvider: &stubPromptProvider{},
 		Tools: func() []domain.Tool { return nil }, MaxConcurrentTools: 1, ContextFullTurns: -1,
 	})
@@ -25,7 +25,7 @@ func TestCmdThinking_DefaultCurrentAndReadError(t *testing.T) {
 	app := newThinkingTestApp(p)
 
 	// No scripted input means ReadLine returns an error and command exits.
-	app.LR = newScriptReader()
+	app.Reader = newScriptReader()
 	app.cmdThinking()
 
 	out := p.Output()
@@ -44,7 +44,7 @@ func TestCmdThinking_InvalidChoiceKeepsCurrent(t *testing.T) {
 	p := &spyPrinter{}
 	app := newThinkingTestApp(p)
 	app.Manager.SetThinkingEffort(domain.ThinkingMedium)
-	app.LR = newScriptReader("999")
+	app.Reader = newScriptReader("999")
 
 	app.cmdThinking()
 
@@ -61,7 +61,7 @@ func TestCmdThinking_ValidChoiceOff(t *testing.T) {
 	p := &spyPrinter{}
 	app := newThinkingTestApp(p)
 	app.Manager.SetThinkingEffort(domain.ThinkingHigh)
-	app.LR = newScriptReader("1")
+	app.Reader = newScriptReader("1")
 
 	app.cmdThinking()
 
@@ -78,7 +78,7 @@ func TestCmdThinking_ValidChoiceHighWithTrim(t *testing.T) {
 	p := &spyPrinter{}
 	app := newThinkingTestApp(p)
 	app.Manager.SetThinkingEffort(domain.ThinkingOff)
-	app.LR = newScriptReader(" 4 ")
+	app.Reader = newScriptReader(" 4 ")
 
 	app.cmdThinking()
 
