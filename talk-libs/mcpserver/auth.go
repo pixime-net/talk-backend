@@ -74,7 +74,7 @@ func (a *App) buildAuthMiddleware(addr string, mux *http.ServeMux) func(http.Han
 	hasOAuth := a.oauth != nil
 
 	// Resolve the public base URL for OAuth metadata / WWW-Authenticate.
-	baseURL := "http://" + addr
+	baseURL := "https://" + addr
 	if hasOAuth && a.oauth.ResourceBaseURL != "" {
 		baseURL = strings.TrimRight(a.oauth.ResourceBaseURL, "/")
 	}

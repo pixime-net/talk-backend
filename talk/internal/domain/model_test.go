@@ -100,7 +100,7 @@ func TestSupportedModels_DoesNotContainPoolsideAgent(t *testing.T) {
 // Hardcodes the expected alias set so that dropping an existing model (or adding
 // an unexpected one) fails loudly, unlike the registry-derived TestSupportedModels.
 func TestSupportedModels_PreservesAllAliases(t *testing.T) {
-	expected := []string{"haiku-4.5", "sonnet-4.6", "sonnet-5", "opus-4.6", "o4-mini", "gpt-5.4", "mistral-small", "deepseek-v3.2", "deepseek-v4.1-flash"}
+	expected := []string{"haiku-4.5", "sonnet-4.6", "sonnet-5", "opus-4.6", "o4-mini", "gpt-5.4", "mistral-small", "mistral-medium", "deepseek-v3.2", "deepseek-v4.1-flash"}
 	got := SupportedModels()
 
 	if len(got) != len(expected) {

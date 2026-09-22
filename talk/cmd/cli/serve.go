@@ -266,7 +266,6 @@ func sanitizeError(err error) error {
 	case errors.Is(err, mcp.ErrSessionUnavailable):
 		return fmt.Errorf("MCP tool execution is temporarily unavailable for an MCP server, please try again")
 	default:
-		// return fmt.Errorf("an unexpected error occurred")
-		return fmt.Errorf("%w", err)
+		return fmt.Errorf("an unexpected error occurred")
 	}
 }

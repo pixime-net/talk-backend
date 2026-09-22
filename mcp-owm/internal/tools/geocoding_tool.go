@@ -11,7 +11,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-const defaultGeoBaseURL = "http://api.openweathermap.org/geo/1.0"
+const defaultGeoBaseURL = "https://api.openweathermap.org/geo/1.0"
 
 // GeocodingToolInput is the typed input for GeocodingTool.
 type GeocodingToolInput struct {

@@ -61,7 +61,7 @@ func TestRouter_MistralProviderReturnsClient(t *testing.T) {
 func TestRouter_OpenRouterProviderReturnsClient(t *testing.T) {
 	t.Setenv("OPENROUTER_API_KEY", "test-key")
 	r := NewLLMRouter(&config.Config{})
-	client, err := r.Get("openrouter-deepseek-chat")
+	client, err := r.Get("deepseek-v3.2")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
