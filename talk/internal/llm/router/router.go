@@ -7,6 +7,7 @@ import (
 	"github.com/pixime-net/talk/internal/domain"
 	"github.com/pixime-net/talk/internal/llm/anthropic"
 	"github.com/pixime-net/talk/internal/llm/openai"
+	"github.com/pixime-net/talk/internal/llm/openrouter"
 )
 
 // Router builds LlmClient instances for model aliases from configuration.
@@ -37,6 +38,8 @@ func (r *Router) Get(model string) (domain.LlmClient, error) {
 	case domain.APIClientOpenAI:
 		// Standard OpenAI-compatible provider
 		return openai.NewOpenAIClient(key, d), nil
+	case domain.APIClientOpenRouter:
+		return openrouter.NewClient(key, d), nil
 	default:
 		return nil, fmt.Errorf("unsupported API client %q", d.APIClient)
 	}

@@ -6,8 +6,9 @@ import "fmt"
 type APIClient string
 
 const (
-	APIClientOpenAI    APIClient = "openai"
-	APIClientAnthropic APIClient = "anthropic"
+	APIClientOpenAI     APIClient = "openai"
+	APIClientAnthropic  APIClient = "anthropic"
+	APIClientOpenRouter APIClient = "openrouter"
 )
 
 // OTLPProvider identifies the LLM provider backend.
@@ -32,10 +33,11 @@ ibm.watsonx_ai	IBM Watsonx
 _other	Other provider (use with gen_ai.system_description)
 */
 const (
-	OTLPProviderAnthropic OTLPProvider = "anthropic"
-	OTLPProviderOpenAI    OTLPProvider = "openai"
-	OTLPProviderMistral   OTLPProvider = "mistral_ai"
-	OTLPProviderPoolside  OTLPProvider = "_other"
+	OTLPProviderAnthropic  OTLPProvider = "anthropic"
+	OTLPProviderOpenAI     OTLPProvider = "openai"
+	OTLPProviderMistral    OTLPProvider = "mistral_ai"
+	OTLPProviderOpenRouter OTLPProvider = "openrouter"
+	OTLPProviderPoolside   OTLPProvider = "_other"
 )
 
 // ThinkingStyle describes how a model supports thinking/reasoning.
@@ -52,7 +54,11 @@ const (
 type OutputLimitParameter string
 
 const (
-	OutputLimitParameterMaxTokens           OutputLimitParameter = "max_tokens"
+	// MaxTokens is the standard OpenAI-compatible output limit parameter.
+	// used by Mistral, Openrouter and old OpenAI models.
+	OutputLimitParameterMaxTokens OutputLimitParameter = "max_tokens"
+	// OutputLimitParameterMaxCompletionTokens is the OpenAI-compatible output limit parameter for the completion portion of the request.
+	// used by some recent OpenAI models.
 	OutputLimitParameterMaxCompletionTokens OutputLimitParameter = "max_completion_tokens"
 )
 
@@ -93,7 +99,12 @@ var registry = []Model{
 	{Name: "opus-4.6", OTLPProvider: OTLPProviderAnthropic, APIClient: APIClientAnthropic, APIKeyName: "ANTHROPIC_API_KEY", APIModelID: "claude-opus-4-6", ThinkingStyle: ThinkingStyleAdaptive, ContextWindowTokens: 1_000_000, ProviderMaxOutputTokens: 128_000, RequestMaxOutputTokens: 16384},
 	{Name: "o4-mini", OTLPProvider: OTLPProviderOpenAI, APIClient: APIClientOpenAI, APIKeyName: "OPENAI_API_KEY", APIModelID: "o4-mini", ThinkingStyle: ThinkingStyleEffort, ContextWindowTokens: 200_000, ProviderMaxOutputTokens: 100_000, RequestMaxOutputTokens: 16384, OutputLimitParameter: OutputLimitParameterMaxCompletionTokens},
 	{Name: "gpt-5.4", OTLPProvider: OTLPProviderOpenAI, APIClient: APIClientOpenAI, APIKeyName: "OPENAI_API_KEY", APIModelID: "gpt-4o", ContextWindowTokens: 128_000, ProviderMaxOutputTokens: 16_384, RequestMaxOutputTokens: 16384, OutputLimitParameter: OutputLimitParameterMaxTokens},
-	{Name: "mistral-small", OTLPProvider: OTLPProviderMistral, APIClient: APIClientOpenAI, APIKeyName: "MISTRAL_API_KEY", URL: "https://api.mistral.ai/v1", APIModelID: "mistral-small-4-0-26-03", RequestMaxOutputTokens: 8192, OutputLimitParameter: OutputLimitParameterMaxTokens},
+	{Name: "mistral-small", OTLPProvider: OTLPProviderMistral, APIClient: APIClientOpenAI, APIKeyName: "MISTRAL_API_KEY", URL: "https://api.mistral.ai/v1", APIModelID: "mistral-small-latest", ContextWindowTokens: 256_000, RequestMaxOutputTokens: 16_384, OutputLimitParameter: OutputLimitParameterMaxTokens},
+	{Name: "mistral-medium", OTLPProvider: OTLPProviderMistral, APIClient: APIClientOpenAI, APIKeyName: "MISTRAL_API_KEY", URL: "https://api.mistral.ai/v1", APIModelID: "mistral-medium-latest", ContextWindowTokens: 256_000, RequestMaxOutputTokens: 16_384, OutputLimitParameter: OutputLimitParameterMaxTokens},
+	// DeepSeek-V3.2: Version améliorée avec excellent raisonnement, 128K contexte, prix $0.14/M input, $0.28/M output
+	{Name: "deepseek-v3.2", OTLPProvider: OTLPProviderOpenRouter, APIClient: APIClientOpenRouter, APIKeyName: "OPENROUTER_API_KEY", APIModelID: "deepseek/deepseek-v3.2", ThinkingStyle: ThinkingStyleEffort, ContextWindowTokens: 106_496, ProviderMaxOutputTokens: 8_192, RequestMaxOutputTokens: 8192, OutputLimitParameter: OutputLimitParameterMaxTokens},
+	// DeepSeek-4.1-Flash: Version flash rapide et économique, 128K contexte, prix $0.10/M input/output
+	{Name: "deepseek-v4.1-flash", OTLPProvider: OTLPProviderOpenRouter, APIClient: APIClientOpenRouter, APIKeyName: "OPENROUTER_API_KEY", APIModelID: "deepseek/deepseek-v4.1-flash", ThinkingStyle: ThinkingStyleEffort, ContextWindowTokens: 128_000, ProviderMaxOutputTokens: 8_192, RequestMaxOutputTokens: 8192, OutputLimitParameter: OutputLimitParameterMaxTokens},
 }
 
 // Lookup returns the model details for a given alias.

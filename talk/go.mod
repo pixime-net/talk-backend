@@ -1,6 +1,6 @@
 module github.com/pixime-net/talk
 
-go 1.25.0
+go 1.25.10
 
 require (
 	github.com/ag-ui-protocol/ag-ui/sdks/community/go v0.0.0-20260624033246-b219bdc9c6ca
@@ -18,6 +18,7 @@ require (
 )
 
 require (
+	github.com/OpenRouterTeam/go-sdk v0.8.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
@@ -33,6 +34,7 @@ require (
 	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
+	github.com/spyzhov/ajson v0.8.0 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect

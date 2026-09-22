@@ -42,6 +42,7 @@ func (c *AnthropicClient) Complete(ctx context.Context, systemPrompt string, mes
 	}
 
 	switch c.model.ThinkingStyle {
+	// Sonnet 5+/Opus 5+
 	case domain.ThinkingStyleAdaptive:
 		if opts.ThinkingEffort == "" || opts.ThinkingEffort == domain.ThinkingOff {
 			params.Thinking = anthropic.ThinkingConfigParamUnion{
@@ -54,11 +55,12 @@ func (c *AnthropicClient) Complete(ctx context.Context, systemPrompt string, mes
 					Display: anthropic.ThinkingConfigAdaptiveDisplaySummarized,
 				},
 			}
-			params.OutputConfig.Effort = effortToOutputConfigEffort(opts.ThinkingEffort)
+			params.OutputConfig.Effort = effortToAnthropicEffort(opts.ThinkingEffort)
 		}
+	// haiku-4.5/sonnet-4.5
 	case domain.ThinkingStyleBudget:
 		if opts.ThinkingEffort != "" && opts.ThinkingEffort != domain.ThinkingOff {
-			budgetTokens := thinkingBudget(opts.ThinkingEffort, maxTokens)
+			budgetTokens := thinkingEffortToAnthropicBudget(opts.ThinkingEffort, maxTokens)
 			params.Thinking = anthropic.ThinkingConfigParamUnion{
 				OfEnabled: &anthropic.ThinkingConfigEnabledParam{
 					BudgetTokens: budgetTokens,
@@ -88,8 +90,8 @@ func (c *AnthropicClient) Complete(ctx context.Context, systemPrompt string, mes
 	return msg, usage, nil
 }
 
-// effortToOutputConfigEffort maps a domain thinking effort to the Anthropic output_config effort level.
-func effortToOutputConfigEffort(effort domain.ThinkingEffort) anthropic.OutputConfigEffort {
+// effortToAnthropicEffort maps a domain thinking effort to the Anthropic output_config effort level.
+func effortToAnthropicEffort(effort domain.ThinkingEffort) anthropic.OutputConfigEffort {
 	switch effort {
 	case domain.ThinkingLow:
 		return anthropic.OutputConfigEffortLow
@@ -102,8 +104,8 @@ func effortToOutputConfigEffort(effort domain.ThinkingEffort) anthropic.OutputCo
 	}
 }
 
-// thinkingBudget computes budget_tokens as a proportion of the model's max output tokens.
-func thinkingBudget(effort domain.ThinkingEffort, maxOutputTokens int64) int64 {
+// thinkingEffortToAnthropicBudget computes budget_tokens as a proportion of the model's max output tokens.
+func thinkingEffortToAnthropicBudget(effort domain.ThinkingEffort, maxOutputTokens int64) int64 {
 	var ratio float64
 	switch effort {
 	case domain.ThinkingLow:
