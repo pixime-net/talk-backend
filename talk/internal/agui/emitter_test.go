@@ -735,16 +735,16 @@ func newUsageTestConversationManager(
 	emitter := NewAGUIEmitter(sse, nil)
 	handlers := domain.NewMessageEventHandlers([][]domain.MessageEventHandler{{store}, {emitter}})
 	return domain.NewConversationManager(domain.ConversationManagerConfig{
-		Client:             &usageTestClient{responses: responses, usages: usages},
-		Model:              domain.Model{Name: "test-model", ContextWindowTokens: 100, ProviderMaxOutputTokens: 50},
-		Scope:              domain.NewSessionScope("test-session", "anonymous"),
-		Store:              store,
-		SessionBrowser:     store,
-		PromptProvider:     usageTestPromptProvider{},
-		Tools:              func() []domain.Tool { return []domain.Tool{usageTestTool{}} },
-		EventHandlers:      handlers,
-		MaxConcurrentTools: 1,
-		ContextFullTurns:   -1,
+		Client:              &usageTestClient{responses: responses, usages: usages},
+		Model:               domain.Model{Name: "test-model", ContextWindowTokens: 100, ProviderMaxOutputTokens: 50},
+		SessionScope:        domain.NewSessionScope("test-session", "anonymous"),
+		MessageRepository:   store,
+		SessionRepository:   store,
+		PromptProvider:      usageTestPromptProvider{},
+		Tools:               func() []domain.Tool { return []domain.Tool{usageTestTool{}} },
+		MessageEventHandler: handlers,
+		MaxConcurrentTools:  1,
+		ContextFullTurns:    -1,
 	})
 }
 

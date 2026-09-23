@@ -1,4 +1,6 @@
-package domain
+package agui
+
+import "github.com/pixime-net/talk/internal/domain"
 
 // TokenUsagePayload is the confirmed token usage for one completed LLM call.
 type TokenUsagePayload struct {
@@ -24,8 +26,8 @@ type TurnUsagePayload struct {
 	ReasoningTokens  int64  `json:"reasoning_tokens,omitempty"`
 }
 
-// NewTokenUsagePayload builds the provider-neutral payload for one LLM call.
-func NewTokenUsagePayload(model Model, usage Usage) TokenUsagePayload {
+// NewTokenUsagePayload builds the AG-UI payload for one LLM call.
+func NewTokenUsagePayload(model domain.Model, usage domain.Usage) TokenUsagePayload {
 	return TokenUsagePayload{
 		Model:                   model.Name,
 		InputTokens:             usage.InputTokens,
@@ -40,8 +42,8 @@ func NewTokenUsagePayload(model Model, usage Usage) TokenUsagePayload {
 	}
 }
 
-// NewTurnUsagePayload builds the authoritative counts-only payload for a turn.
-func NewTurnUsagePayload(model Model, usage Usage) TurnUsagePayload {
+// NewTurnUsagePayload builds the AG-UI payload for one completed turn.
+func NewTurnUsagePayload(model domain.Model, usage domain.Usage) TurnUsagePayload {
 	return TurnUsagePayload{
 		Model:            model.Name,
 		InputTokens:      usage.InputTokens,

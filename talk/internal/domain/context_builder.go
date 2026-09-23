@@ -5,14 +5,14 @@ import "context"
 // ContextBuilder builds the message context for an LLM call by reconciling
 // in-memory messages with historical turns loaded from a SessionBrowser.
 type ContextBuilder struct {
-	messageStore   MessageStore
-	sessionBrowser SessionBrowser
+	messageStore   MessageRepository
+	sessionBrowser SessionRepository
 	sessionID      string
 	contextFull    int // -1 full, 0 lean, N hybrid
 }
 
 // NewContextBuilder creates a ContextBuilder.
-func NewContextBuilder(messageStore MessageStore, sessionBrowser SessionBrowser, sessionID string, contextFullTurns int) *ContextBuilder {
+func NewContextBuilder(messageStore MessageRepository, sessionBrowser SessionRepository, sessionID string, contextFullTurns int) *ContextBuilder {
 	return &ContextBuilder{
 		messageStore:   messageStore,
 		sessionBrowser: sessionBrowser,

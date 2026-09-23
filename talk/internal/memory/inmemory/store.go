@@ -18,32 +18,41 @@ type sessionData struct {
 	createdAt  time.Time
 }
 
-// core is the shared internal storage for both MessageRepository and SessionBrowser.
-type core struct {
+// db is the shared in-memory storage for repositories and event handlers.
+type db struct {
 	mu       sync.Mutex
 	sessions map[string]*sessionData
 }
 
-// MessageRepository implements domain.MessageStore backed by in-memory storage.
-type MessageRepository struct{ *core }
+// InMemoryMessageRepository implements domain.MessageRepository backed by in-memory storage.
+type InMemoryMessageRepository struct{ *db }
 
-// Browser implements domain.SessionBrowser backed by in-memory storage.
-type Browser struct{ *core }
+// InMemorySessionRepository implements domain.SessionRepository backed by in-memory storage.
+type InMemorySessionRepository struct{ *db }
 
-// New creates a pair of in-memory stores sharing the same underlying data.
-func New() (*MessageRepository, *Browser) {
-	c := &core{sessions: make(map[string]*sessionData)}
-	return &MessageRepository{c}, &Browser{c}
+// InMemoryMessageEventHandler persists conversation events in memory.
+type InMemoryMessageEventHandler struct{ *db }
+
+var _ domain.MessageRepository = (*InMemoryMessageRepository)(nil)
+var _ domain.SessionRepository = (*InMemorySessionRepository)(nil)
+var _ domain.MessageEventHandler = (*InMemoryMessageEventHandler)(nil)
+
+// NewInMemoryStore creates in-memory repositories and an event handler sharing the same data.
+func NewInMemoryStore() (*InMemoryMessageRepository, *InMemorySessionRepository, *InMemoryMessageEventHandler) {
+	db := &db{sessions: make(map[string]*sessionData)}
+	return &InMemoryMessageRepository{db}, &InMemorySessionRepository{db}, &InMemoryMessageEventHandler{db}
 }
 
-var _ domain.MessageStore = (*MessageRepository)(nil)
-var _ domain.MessageEventHandler = (*MessageRepository)(nil)
-var _ domain.SessionBrowser = (*Browser)(nil)
+// New creates a pair of in-memory repositories sharing the same underlying data.
+func New() (*InMemoryMessageRepository, *InMemorySessionRepository) {
+	messages, sessions, _ := NewInMemoryStore()
+	return messages, sessions
+}
 
 // HandleMessageEvent appends a message to the given session.
 // The session is materialized only when the first user message is added.
 // The title is set from the first user message content.
-func (r *MessageRepository) HandleMessageEvent(_ context.Context, event domain.MessageEvent) error {
+func (r *InMemoryMessageEventHandler) HandleMessageEvent(_ context.Context, event domain.MessageEvent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -64,7 +73,7 @@ func (r *MessageRepository) HandleMessageEvent(_ context.Context, event domain.M
 }
 
 // HandleTurnEvent updates turn history for one completed turn.
-func (r *MessageRepository) HandleTurnEvent(_ context.Context, event domain.TurnEvent) error {
+func (r *InMemoryMessageEventHandler) HandleTurnEvent(_ context.Context, event domain.TurnEvent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -97,17 +106,25 @@ func (r *MessageRepository) HandleTurnEvent(_ context.Context, event domain.Turn
 }
 
 // HandleToolCallStart is a no-op for the in-memory store.
-func (r *MessageRepository) HandleToolCallStart(_ context.Context, _ domain.ToolCallEvent) error {
+func (r *InMemoryMessageEventHandler) HandleToolCallStart(_ context.Context, _ domain.ToolCallEvent) error {
 	return nil
 }
 
 // HandleToolCallEnd is a no-op for the in-memory store.
-func (r *MessageRepository) HandleToolCallEnd(_ context.Context, _ domain.ToolCallEndEvent) error {
+func (r *InMemoryMessageEventHandler) HandleToolCallEnd(_ context.Context, _ domain.ToolCallEndEvent) error {
 	return nil
 }
 
+func (r *InMemoryMessageRepository) HandleMessageEvent(ctx context.Context, event domain.MessageEvent) error {
+	return (&InMemoryMessageEventHandler{r.db}).HandleMessageEvent(ctx, event)
+}
+
+func (r *InMemoryMessageRepository) HandleTurnEvent(ctx context.Context, event domain.TurnEvent) error {
+	return (&InMemoryMessageEventHandler{r.db}).HandleTurnEvent(ctx, event)
+}
+
 // AllMessages returns a copy of all stored messages for the given session.
-func (r *MessageRepository) AllMessages(_ context.Context, sessionID string) ([]domain.Message, error) {
+func (r *InMemoryMessageRepository) AllMessages(_ context.Context, sessionID string) ([]domain.Message, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	sd, exists := r.sessions[sessionID]
@@ -120,7 +137,7 @@ func (r *MessageRepository) AllMessages(_ context.Context, sessionID string) ([]
 }
 
 // ClearMessages removes all messages from the given session.
-func (r *MessageRepository) ClearMessages(_ context.Context, sessionID string) error {
+func (r *InMemoryMessageRepository) ClearMessages(_ context.Context, sessionID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if sd, exists := r.sessions[sessionID]; exists {
@@ -130,7 +147,7 @@ func (r *MessageRepository) ClearMessages(_ context.Context, sessionID string) e
 }
 
 // ListSessions returns all known sessions.
-func (b *Browser) ListSessions(_ context.Context, _ string) ([]domain.SessionSummary, error) {
+func (b *InMemorySessionRepository) ListSessions(_ context.Context, _ string) ([]domain.SessionSummary, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	summaries := make([]domain.SessionSummary, 0, len(b.sessions))
@@ -152,7 +169,7 @@ func (b *Browser) ListSessions(_ context.Context, _ string) ([]domain.SessionSum
 }
 
 // LoadHistoryTurnsFromSession returns the conversation history for the given session as question/answer pairs.
-func (b *Browser) LoadHistoryTurnsFromSession(_ context.Context, sessionID string) ([]domain.HistoryTurn, error) {
+func (b *InMemorySessionRepository) LoadHistoryTurnsFromSession(_ context.Context, sessionID string) ([]domain.HistoryTurn, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	sd, exists := b.sessions[sessionID]
@@ -168,7 +185,7 @@ func (b *Browser) LoadHistoryTurnsFromSession(_ context.Context, sessionID strin
 }
 
 // DeleteSession removes a session and its data from memory.
-func (b *Browser) DeleteSession(_ context.Context, sessionID string) error {
+func (b *InMemorySessionRepository) DeleteSession(_ context.Context, sessionID string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	delete(b.sessions, sessionID)

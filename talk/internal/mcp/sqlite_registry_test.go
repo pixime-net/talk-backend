@@ -57,7 +57,7 @@ func TestValidateServerName(t *testing.T) {
 
 func TestSQLiteRegistry_AddAndList(t *testing.T) {
 	db := testDB(t)
-	reg, err := NewSQLiteRegistry(db)
+	reg, err := NewSqliteMCPRegistry(db)
 	if err != nil {
 		t.Fatalf("new registry: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestSQLiteRegistry_AddAndList(t *testing.T) {
 
 func TestSQLiteRegistry_Get(t *testing.T) {
 	db := testDB(t)
-	reg, err := NewSQLiteRegistry(db)
+	reg, err := NewSqliteMCPRegistry(db)
 	if err != nil {
 		t.Fatalf("new registry: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestSQLiteRegistry_Get(t *testing.T) {
 
 func TestSQLiteRegistry_Remove(t *testing.T) {
 	db := testDB(t)
-	reg, err := NewSQLiteRegistry(db)
+	reg, err := NewSqliteMCPRegistry(db)
 	if err != nil {
 		t.Fatalf("new registry: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestSQLiteRegistry_Remove(t *testing.T) {
 
 func TestSQLiteRegistry_DuplicateName(t *testing.T) {
 	db := testDB(t)
-	reg, err := NewSQLiteRegistry(db)
+	reg, err := NewSqliteMCPRegistry(db)
 	if err != nil {
 		t.Fatalf("new registry: %v", err)
 	}

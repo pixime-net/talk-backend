@@ -380,9 +380,9 @@ func TestCmdSessionNew_WithManager(t *testing.T) {
 	p := &spyPrinter{}
 	app := newTestApp(p)
 	mgr := domain.NewConversationManager(domain.ConversationManagerConfig{
-		Scope:          app.Scope,
-		Store:          newFakeStore(),
-		SessionBrowser: newFakeSessionBrowser(),
+		SessionScope:      app.Scope,
+		MessageRepository: newFakeStore(),
+		SessionRepository: newFakeSessionBrowser(),
 	})
 	app.Manager = mgr
 
@@ -418,9 +418,9 @@ func TestCmdSessionList_SwitchWithManager(t *testing.T) {
 	app.Sessions = sb
 	app.Reader = newScriptReader("1")
 	mgr := domain.NewConversationManager(domain.ConversationManagerConfig{
-		Scope:          app.Scope,
-		Store:          newFakeStore(),
-		SessionBrowser: newFakeSessionBrowser(),
+		SessionScope:      app.Scope,
+		MessageRepository: newFakeStore(),
+		SessionRepository: newFakeSessionBrowser(),
 	})
 	app.Manager = mgr
 

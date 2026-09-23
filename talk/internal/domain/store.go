@@ -59,17 +59,17 @@ func (s SessionScope) SessionID() string { return s.sessionID }
 // UserID returns the user identifier.
 func (s SessionScope) UserID() string { return s.userID }
 
-// MessageStore persists conversation messages.
+// MessageRepository persists conversation messages.
 // Implementations are fully stateless — all identity context is passed via parameters.
-type MessageStore interface {
+type MessageRepository interface {
 	// AllMessages returns all messages for the given session.
 	AllMessages(ctx context.Context, sessionID string) ([]Message, error)
 	// ClearMessages removes all messages for the given session.
 	ClearMessages(ctx context.Context, sessionID string) error
 }
 
-// SessionBrowser provides access to historical sessions stored in an external system.
-type SessionBrowser interface {
+// SessionRepository provides access to historical sessions stored in an external system.
+type SessionRepository interface {
 	ListSessions(ctx context.Context, userID string) ([]SessionSummary, error)
 	LoadHistoryTurnsFromSession(ctx context.Context, sessionID string) ([]HistoryTurn, error)
 	DeleteSession(ctx context.Context, sessionID string) error

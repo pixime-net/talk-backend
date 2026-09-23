@@ -89,17 +89,30 @@ func mustClearMessages(t *testing.T, store messageCleaner, sessionID string) {
 	}
 }
 
-func newTestStore(t *testing.T) (*MessageRepository, *Browser, func()) {
+func newTestStore(t *testing.T) (*SqliteMessageRepository, *SqliteSessionRepository, func()) {
 	t.Helper()
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
-	r, b, err := New(dbPath)
+	r, b, err := newStoreAtPath(dbPath)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	cleanup := func() { _ = r.Close() }
+	cleanup := func() { _ = r.db.conn.Close() }
 	t.Cleanup(cleanup)
 	return r, b, cleanup
+}
+
+func newStoreAtPath(dbPath string) (*SqliteMessageRepository, *SqliteSessionRepository, error) {
+	conn, err := Open(dbPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	messages, sessions, _, err := NewSqliteStore(conn)
+	if err != nil {
+		_ = conn.Close()
+		return nil, nil, err
+	}
+	return messages, sessions, nil
 }
 
 func TestStore_AddAndAll(t *testing.T) {
@@ -261,11 +274,11 @@ func TestStore_ListSessionsFiltersByUserID(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
-	r, b, err := New(dbPath)
+	r, b, err := newStoreAtPath(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = r.Close() }()
+	defer func() { _ = r.db.conn.Close() }()
 
 	aliceScope := domain.NewSessionScope("sess-a", "alice")
 	bobScope := domain.NewSessionScope("sess-b", "bob")
@@ -387,20 +400,20 @@ func TestStore_PersistenceAcrossReopen(t *testing.T) {
 	dbPath := filepath.Join(dir, "test.db")
 
 	// Create store, add messages, close
-	r1, _, err := New(dbPath)
+	r1, _, err := newStoreAtPath(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	mustAddMessage(t, r1, domain.Message{Role: domain.RoleUser, Content: "persistent question"}, scope)
 	mustAddMessage(t, r1, domain.Message{Role: domain.RoleAssistant, Content: "persistent answer"}, scope)
-	_ = r1.Close()
+	_ = r1.db.conn.Close()
 
 	// Reopen — messages should be available from disk
-	r2, _, err := New(dbPath)
+	r2, _, err := newStoreAtPath(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = r2.Close() }()
+	defer func() { _ = r2.db.conn.Close() }()
 
 	msgs, _ := r2.AllMessages(context.Background(), scope.SessionID())
 	if len(msgs) != 2 {
@@ -418,19 +431,19 @@ func TestStore_PersistenceSessionsListAfterReopen(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
 
-	r1, _, err := New(dbPath)
+	r1, _, err := newStoreAtPath(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	mustAddMessage(t, r1, domain.Message{Role: domain.RoleUser, Content: "q1"}, scope)
-	_ = r1.Close()
+	_ = r1.db.conn.Close()
 
 	// Reopen — should still list the session
-	_, b2, err := New(dbPath)
+	_, b2, err := newStoreAtPath(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = b2.Close() }()
+	defer func() { _ = b2.db.conn.Close() }()
 
 	sessions, _ := b2.ListSessions(context.Background(), "user1")
 	if len(sessions) != 1 {
@@ -445,7 +458,7 @@ func TestStore_PersistenceSessionsListAfterReopen(t *testing.T) {
 }
 
 func TestStore_NewInvalidPath(t *testing.T) {
-	_, _, err := New(filepath.Join(string(os.PathSeparator), "nonexistent", "deeply", "nested", "test.db"))
+	_, _, err := newStoreAtPath(filepath.Join(string(os.PathSeparator), "nonexistent", "deeply", "nested", "test.db"))
 	if err == nil {
 		t.Fatal("expected error for invalid path")
 	}
@@ -561,11 +574,11 @@ func TestStore_DeleteSession_NonExistent(t *testing.T) {
 func TestStore_AddMessage_AfterClose(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
-	s, _, err := New(dbPath)
+	s, _, err := newStoreAtPath(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = s.Close()
+	_ = s.db.conn.Close()
 
 	if err := s.HandleMessageEvent(context.Background(), domain.MessageEvent{
 		Message:      domain.Message{Role: domain.RoleUser, Content: "hello"},
@@ -582,11 +595,11 @@ func TestStore_AddMessage_AfterClose(t *testing.T) {
 func TestStore_ClearMessages_AfterClose(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
-	s, _, err := New(dbPath)
+	s, _, err := newStoreAtPath(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = s.Close()
+	_ = s.db.conn.Close()
 
 	if err := s.ClearMessages(context.Background(), scope.SessionID()); err == nil {
 		t.Fatal("expected error on closed DB")
@@ -596,11 +609,11 @@ func TestStore_ClearMessages_AfterClose(t *testing.T) {
 func TestStore_ListSessions_AfterClose(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
-	_, b, err := New(dbPath)
+	_, b, err := newStoreAtPath(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = b.Close()
+	_ = b.db.conn.Close()
 
 	_, err = b.ListSessions(context.Background(), "user1")
 	if err == nil {
@@ -611,11 +624,11 @@ func TestStore_ListSessions_AfterClose(t *testing.T) {
 func TestStore_LoadHistoryTurns_AfterClose(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
-	_, b, err := New(dbPath)
+	_, b, err := newStoreAtPath(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = b.Close()
+	_ = b.db.conn.Close()
 
 	_, err = b.LoadHistoryTurnsFromSession(context.Background(), "sess-1")
 	if err == nil {

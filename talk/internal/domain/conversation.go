@@ -33,49 +33,49 @@ const (
 
 // ConversationManager orchestrates a multi-turn conversation with optional tool calls.
 type ConversationManager struct {
-	sessionScope   SessionScope
-	llmClient      LlmClient
-	model          Model
-	messageStore   MessageStore
-	promptProvider PromptProvider
-	toolsProvider  func() []Tool
-	messageHandler MessageEventHandler
-	contextBuilder *ContextBuilder
-	toolExecutor   *ToolExecutor
-	thinkingEffort ThinkingEffort
+	llmClient           LlmClient
+	model               Model
+	sessionScope        SessionScope
+	messageEventHandler MessageEventHandler
+	messageRepository   MessageRepository
+	promptProvider      PromptProvider
+	toolsProvider       func() []Tool
+	contextBuilder      *ContextBuilder
+	toolExecutor        *ToolExecutor
+	thinkingEffort      ThinkingEffort
 }
 
 // ConversationManagerConfig groups all parameters for creating a ConversationManager.
 type ConversationManagerConfig struct {
-	Client             LlmClient
-	Model              Model
-	Scope              SessionScope
-	Store              MessageStore
-	SessionBrowser     SessionBrowser
-	PromptProvider     PromptProvider
-	Tools              func() []Tool
-	EventHandlers      MessageEventHandler
-	MaxConcurrentTools int
-	ContextFullTurns   int
+	Client              LlmClient
+	Model               Model
+	SessionScope        SessionScope
+	MessageEventHandler MessageEventHandler
+	MessageRepository   MessageRepository
+	SessionRepository   SessionRepository
+	PromptProvider      PromptProvider
+	Tools               func() []Tool
+	MaxConcurrentTools  int
+	ContextFullTurns    int
 }
 
 // NewConversationManager creates a ConversationManager.
 func NewConversationManager(cfg ConversationManagerConfig) *ConversationManager {
-	messageHandler := cfg.EventHandlers
+	messageHandler := cfg.MessageEventHandler
 	if messageHandler == nil {
 		messageHandler = NoOpMessageEventHandler{}
 	}
 
 	return &ConversationManager{
-		sessionScope:   cfg.Scope,
-		llmClient:      cfg.Client,
-		model:          cfg.Model,
-		messageStore:   cfg.Store,
-		promptProvider: cfg.PromptProvider,
-		toolsProvider:  cfg.Tools,
-		messageHandler: messageHandler,
-		contextBuilder: NewContextBuilder(cfg.Store, cfg.SessionBrowser, cfg.Scope.SessionID(), cfg.ContextFullTurns),
-		toolExecutor:   NewToolExecutor(cfg.Tools, cfg.MaxConcurrentTools, messageHandler),
+		sessionScope:        cfg.SessionScope,
+		llmClient:           cfg.Client,
+		model:               cfg.Model,
+		messageEventHandler: messageHandler,
+		messageRepository:   cfg.MessageRepository,
+		promptProvider:      cfg.PromptProvider,
+		toolsProvider:       cfg.Tools,
+		contextBuilder:      NewContextBuilder(cfg.MessageRepository, cfg.SessionRepository, cfg.SessionScope.SessionID(), cfg.ContextFullTurns),
+		toolExecutor:        NewToolExecutor(cfg.Tools, cfg.MaxConcurrentTools, messageHandler),
 	}
 }
 
@@ -117,7 +117,7 @@ func (m *ConversationManager) Chat(ctx context.Context, userInput string) (strin
 	model := m.model
 	// Store the user message in the conversation history before processing to ensure it's included in the context
 	// for the first API call and in observability.
-	if err := m.messageHandler.HandleMessageEvent(ctx, MessageEvent{
+	if err := m.messageEventHandler.HandleMessageEvent(ctx, MessageEvent{
 		Message:      Message{Role: RoleUser, Content: userInput, TurnID: turnID},
 		SessionScope: m.sessionScope,
 		Model:        model,
@@ -200,7 +200,7 @@ func (m *ConversationManager) Chat(ctx context.Context, userInput string) (strin
 	}
 
 	// Persist the incomplete turn before returning the iteration limit error.
-	if err := m.messageHandler.HandleTurnEvent(ctx, TurnEvent{
+	if err := m.messageEventHandler.HandleTurnEvent(ctx, TurnEvent{
 		TurnID:       turnID,
 		TurnSpanID:   turnSpanID,
 		StartedAt:    turnStartedAt,
@@ -239,7 +239,7 @@ func (m *ConversationManager) storeAssistantResponse(ctx context.Context, respon
 	if strings.TrimSpace(stored.Content) == "" && len(stored.ToolCalls) > 0 {
 		stored.Content = formatToolCallSummary(stored.ToolCalls)
 	}
-	return m.messageHandler.HandleMessageEvent(ctx, MessageEvent{
+	return m.messageEventHandler.HandleMessageEvent(ctx, MessageEvent{
 		Message:      stored,
 		SessionScope: m.sessionScope,
 		Model:        response.model,
@@ -260,7 +260,7 @@ func (m *ConversationManager) storeAssistantResponse(ctx context.Context, respon
 // storeToolResultEvents stores one message event per tool execution in the conversation history.
 func (m *ConversationManager) storeToolResultEvents(ctx context.Context, executions []ToolExecutionResult, model Model, turnSpanID string) error {
 	for _, exec := range executions {
-		if err := m.messageHandler.HandleMessageEvent(ctx, MessageEvent{
+		if err := m.messageEventHandler.HandleMessageEvent(ctx, MessageEvent{
 			Message:      exec.Message,
 			SessionScope: m.sessionScope,
 			Model:        model,
@@ -277,7 +277,7 @@ func (m *ConversationManager) storeToolResultEvents(ctx context.Context, executi
 
 // finishTurn emits the final turn event and returns the assistant's response content.
 func (m *ConversationManager) finishTurn(ctx context.Context, event TurnEvent) (string, error) {
-	if err := m.messageHandler.HandleTurnEvent(ctx, event); err != nil {
+	if err := m.messageEventHandler.HandleTurnEvent(ctx, event); err != nil {
 		return "", fmt.Errorf("handling turn event: %w", err)
 	}
 	return event.Output, nil

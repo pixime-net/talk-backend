@@ -16,7 +16,8 @@ import (
 
 const timeFormat = "2006-01-02T15:04:05Z"
 
-// ErrStore indicates a storage-layer failure.
+// ErrStore and storeErr are used to wrap storage-layer errors consistently.
+
 type ErrStore struct{ Err error }
 
 func (e *ErrStore) Error() string { return e.Err.Error() }
@@ -75,26 +76,29 @@ type db struct {
 	mu   sync.RWMutex
 }
 
-// MessageRepository implements domain.MessageStore backed by SQLite.
-type MessageRepository struct{ *db }
+// SqliteMessageRepository implements domain.MessageStore backed by SQLite.
+type SqliteMessageRepository struct{ *db }
 
-// Browser implements domain.SessionBrowser backed by SQLite.
-type Browser struct{ *db }
+// SqliteSessionRepository implements domain.SessionRepository backed by SQLite.
+type SqliteSessionRepository struct{ *db }
 
-var _ domain.MessageStore = (*MessageRepository)(nil)
-var _ domain.MessageEventHandler = (*MessageRepository)(nil)
-var _ domain.SessionBrowser = (*Browser)(nil)
+// SqliteMessageEventHandler implements domain.MessageEventHandler backed by SQLite.
+type SqliteMessageEventHandler struct{ *db }
 
-// New opens (or creates) a SQLite database at dbPath and returns a MessageRepository and Browser.
-func New(dbPath string) (*MessageRepository, *Browser, error) {
+var _ domain.MessageRepository = (*SqliteMessageRepository)(nil)
+var _ domain.SessionRepository = (*SqliteSessionRepository)(nil)
+var _ domain.MessageEventHandler = (*SqliteMessageEventHandler)(nil)
+
+// Open opens and initializes a SQLite database at dbPath.
+func Open(dbPath string) (*sql.DB, error) {
 	conn, err := sql.Open("sqlite", dbPath)
 	if err != nil {
-		return nil, nil, storeErr("opening sqlite db", err)
+		return nil, storeErr("opening sqlite db", err)
 	}
 	// Enable WAL mode for better concurrency.
 	if _, err := conn.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		_ = conn.Close()
-		return nil, nil, storeErr("setting WAL mode", err)
+		return nil, storeErr("setting WAL mode", err)
 	}
 
 	// SQLite supports only one writer at a time.
@@ -104,72 +108,25 @@ func New(dbPath string) (*MessageRepository, *Browser, error) {
 
 	if _, err := conn.Exec(schema); err != nil {
 		_ = conn.Close()
-		return nil, nil, storeErr("creating schema", err)
+		return nil, storeErr("creating schema", err)
 	}
 
-	// Run schema migrations for columns that may be missing in pre-existing databases.
-	if err := migrateHistoryTurns(conn); err != nil {
-		_ = conn.Close()
-		return nil, nil, storeErr("migrating history_turns", err)
-	}
-
-	d := &db{conn: conn}
-	return &MessageRepository{d}, &Browser{d}, nil
+	return conn, nil
 }
 
-// migrateHistoryTurns adds columns that may be absent in legacy databases.
-// It uses PRAGMA table_info to detect missing columns and fails fast on unexpected errors.
-func migrateHistoryTurns(conn *sql.DB) error {
-	existing := make(map[string]struct{})
-	rows, err := conn.Query("PRAGMA table_info(history_turns)")
-	if err != nil {
-		return fmt.Errorf("reading table_info: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var cid int
-		var name, colType string
-		var notNull int
-		var dfltValue sql.NullString
-		var pk int
-		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
-			return fmt.Errorf("scanning table_info: %w", err)
-		}
-		existing[name] = struct{}{}
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterating table_info: %w", err)
+// NewSqliteStore creates SQLite-backed repositories using conn.
+func NewSqliteStore(conn *sql.DB) (*SqliteMessageRepository, *SqliteSessionRepository, *SqliteMessageEventHandler, error) {
+	if conn == nil {
+		return nil, nil, nil, fmt.Errorf("sqlite connection is nil")
 	}
 
-	migrations := []struct {
-		column string
-		ddl    string
-	}{
-		{"status", "ALTER TABLE history_turns ADD COLUMN status TEXT NOT NULL DEFAULT 'complete'"},
-		{"interrupt_id", "ALTER TABLE history_turns ADD COLUMN interrupt_id TEXT NOT NULL DEFAULT ''"},
-		{"interrupt_reason", "ALTER TABLE history_turns ADD COLUMN interrupt_reason TEXT NOT NULL DEFAULT ''"},
-		{"interrupt_state", "ALTER TABLE history_turns ADD COLUMN interrupt_state TEXT NOT NULL DEFAULT ''"},
-	}
-	for _, m := range migrations {
-		if _, ok := existing[m.column]; ok {
-			continue
-		}
-		if _, err := conn.Exec(m.ddl); err != nil {
-			return fmt.Errorf("adding column %s: %w", m.column, err)
-		}
-	}
-	return nil
+	db := &db{conn: conn}
+	return &SqliteMessageRepository{db}, &SqliteSessionRepository{db}, &SqliteMessageEventHandler{db}, nil
 }
-
-// DB returns the underlying database connection for sharing with other components.
-func (d *db) DB() *sql.DB { return d.conn }
-
-// Close closes the underlying database connection.
-func (d *db) Close() error { return d.conn.Close() }
 
 // HandleMessageEvent appends a message to the given session.
 // The session is materialized in the database only on the first user message.
-func (r *MessageRepository) HandleMessageEvent(ctx context.Context, event domain.MessageEvent) error {
+func (r *SqliteMessageEventHandler) HandleMessageEvent(ctx context.Context, event domain.MessageEvent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -211,7 +168,7 @@ func (r *MessageRepository) HandleMessageEvent(ctx context.Context, event domain
 }
 
 // HandleTurnEvent persists one completed turn into history_turns.
-func (r *MessageRepository) HandleTurnEvent(ctx context.Context, event domain.TurnEvent) error {
+func (r *SqliteMessageEventHandler) HandleTurnEvent(ctx context.Context, event domain.TurnEvent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -263,16 +220,24 @@ func (r *MessageRepository) HandleTurnEvent(ctx context.Context, event domain.Tu
 }
 
 // HandleToolCallStart is a no-op for the SQLite store.
-func (r *MessageRepository) HandleToolCallStart(_ context.Context, _ domain.ToolCallEvent) error {
+func (r *SqliteMessageEventHandler) HandleToolCallStart(_ context.Context, _ domain.ToolCallEvent) error {
 	return nil
 }
 
 // HandleToolCallEnd is a no-op for the SQLite store.
-func (r *MessageRepository) HandleToolCallEnd(_ context.Context, _ domain.ToolCallEndEvent) error {
+func (r *SqliteMessageEventHandler) HandleToolCallEnd(_ context.Context, _ domain.ToolCallEndEvent) error {
 	return nil
 }
 
-func (r *MessageRepository) isSessionMaterialized(ctx context.Context, sessionID string) (bool, error) {
+func (r *SqliteMessageRepository) HandleMessageEvent(ctx context.Context, event domain.MessageEvent) error {
+	return (&SqliteMessageEventHandler{r.db}).HandleMessageEvent(ctx, event)
+}
+
+func (r *SqliteMessageRepository) HandleTurnEvent(ctx context.Context, event domain.TurnEvent) error {
+	return (&SqliteMessageEventHandler{r.db}).HandleTurnEvent(ctx, event)
+}
+
+func (r *SqliteMessageEventHandler) isSessionMaterialized(ctx context.Context, sessionID string) (bool, error) {
 	var count int
 	if err := r.conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM sessions WHERE id = ?", sessionID).Scan(&count); err != nil {
 		return false, storeErr("checking session existence", err)
@@ -281,7 +246,7 @@ func (r *MessageRepository) isSessionMaterialized(ctx context.Context, sessionID
 }
 
 // materializeSession inserts a new session row with the given title.
-func (r *MessageRepository) materializeSession(ctx context.Context, scope domain.SessionScope, title string) error {
+func (r *SqliteMessageEventHandler) materializeSession(ctx context.Context, scope domain.SessionScope, title string) error {
 	_, err := r.conn.ExecContext(ctx,
 		"INSERT INTO sessions (id, user_id, title, created_at) VALUES (?, ?, ?, ?)",
 		scope.SessionID(), scope.UserID(), title, time.Now().UTC().Format(timeFormat),
@@ -336,7 +301,7 @@ func buildToolRoleFields(msg domain.Message) toolRoleFields {
 }
 
 // AllMessages returns all messages for the given session.
-func (r *MessageRepository) AllMessages(ctx context.Context, sessionID string) ([]domain.Message, error) {
+func (r *SqliteMessageRepository) AllMessages(ctx context.Context, sessionID string) ([]domain.Message, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -419,7 +384,7 @@ func buildToolMessage(msg domain.Message, tool toolRoleFields) domain.Message {
 }
 
 // ClearMessages removes all messages from the given session (in DB).
-func (r *MessageRepository) ClearMessages(ctx context.Context, sessionID string) error {
+func (r *SqliteMessageRepository) ClearMessages(ctx context.Context, sessionID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, err := r.conn.ExecContext(ctx, "DELETE FROM messages WHERE session_id = ?", sessionID); err != nil {
@@ -432,7 +397,7 @@ func (r *MessageRepository) ClearMessages(ctx context.Context, sessionID string)
 }
 
 // ListSessions returns all sessions for the given user, ordered by creation date (newest first).
-func (b *Browser) ListSessions(ctx context.Context, userID string) ([]domain.SessionSummary, error) {
+func (b *SqliteSessionRepository) ListSessions(ctx context.Context, userID string) ([]domain.SessionSummary, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -471,7 +436,7 @@ func (b *Browser) ListSessions(ctx context.Context, userID string) ([]domain.Ses
 }
 
 // LoadHistoryTurnsFromSession returns the conversation history for the given session as question/answer pairs.
-func (b *Browser) LoadHistoryTurnsFromSession(ctx context.Context, sessionID string) ([]domain.HistoryTurn, error) {
+func (b *SqliteSessionRepository) LoadHistoryTurnsFromSession(ctx context.Context, sessionID string) ([]domain.HistoryTurn, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -518,7 +483,7 @@ func (b *Browser) LoadHistoryTurnsFromSession(ctx context.Context, sessionID str
 }
 
 // DeleteSession removes a session and all its messages from the database.
-func (b *Browser) DeleteSession(ctx context.Context, sessionID string) error {
+func (b *SqliteSessionRepository) DeleteSession(ctx context.Context, sessionID string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 

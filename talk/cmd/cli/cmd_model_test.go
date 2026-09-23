@@ -15,9 +15,9 @@ func TestCmdModel_ValidSelection(t *testing.T) {
 	store := newFakeStore()
 	app.Messages = store
 	app.Manager = domain.NewConversationManager(domain.ConversationManagerConfig{
-		Client: fakeLlmClient{}, Model: domain.Model{Name: "sonnet-4.6", OTLPProvider: domain.OTLPProviderAnthropic}, Scope: app.Scope,
-		Store:          store,
-		SessionBrowser: newFakeSessionBrowser(), PromptProvider: &stubPromptProvider{},
+		Client: fakeLlmClient{}, Model: domain.Model{Name: "sonnet-4.6", OTLPProvider: domain.OTLPProviderAnthropic}, SessionScope: app.Scope,
+		MessageRepository: store,
+		SessionRepository: newFakeSessionBrowser(), PromptProvider: &stubPromptProvider{},
 		Tools: func() []domain.Tool { return nil }, MaxConcurrentTools: 1, ContextFullTurns: -1,
 	})
 
@@ -80,9 +80,9 @@ func TestCmdModel_RouterError(t *testing.T) {
 	store := newFakeStore()
 	app.Messages = store
 	app.Manager = domain.NewConversationManager(domain.ConversationManagerConfig{
-		Client: fakeLlmClient{}, Model: domain.Model{Name: "sonnet-4.6", OTLPProvider: domain.OTLPProviderAnthropic}, Scope: app.Scope,
-		Store:          store,
-		SessionBrowser: newFakeSessionBrowser(), PromptProvider: &stubPromptProvider{},
+		Client: fakeLlmClient{}, Model: domain.Model{Name: "sonnet-4.6", OTLPProvider: domain.OTLPProviderAnthropic}, SessionScope: app.Scope,
+		MessageRepository: store,
+		SessionRepository: newFakeSessionBrowser(), PromptProvider: &stubPromptProvider{},
 		Tools: func() []domain.Tool { return nil }, MaxConcurrentTools: 1, ContextFullTurns: -1,
 	})
 

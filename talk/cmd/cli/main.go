@@ -79,14 +79,18 @@ func run(ctx context.Context, modelAlias, systemFile string, pprofEnabled bool) 
 	scope := domain.NewSessionScope(sessionID, userID)
 
 	dbPath := storeDBPath()
-	messages, browser, err := sqlitestore.New(dbPath)
+	conn, err := sqlitestore.Open(dbPath)
 	if err != nil {
 		return fmt.Errorf("opening session store: %w", err)
 	}
-	defer func() { _ = messages.Close() }()
+	defer func() { _ = conn.Close() }()
+	messages, browser, storeEventHandler, err := sqlitestore.NewSqliteStore(conn)
+	if err != nil {
+		return fmt.Errorf("initializing session store: %w", err)
+	}
 
 	// MCP server registry and manager.
-	mcpRegistry, err := mcp.NewSQLiteRegistry(messages.DB())
+	mcpRegistry, err := mcp.NewSqliteMCPRegistry(conn)
 	if err != nil {
 		return fmt.Errorf("initializing mcp registry: %w", err)
 	}
@@ -95,21 +99,21 @@ func run(ctx context.Context, modelAlias, systemFile string, pprofEnabled bool) 
 	defer mcpManager.Close()
 
 	handlers := domain.NewMessageEventHandlers([][]domain.MessageEventHandler{
-		{messages},
+		{storeEventHandler},
 		buildReporters(cfg),
 	})
 
 	manager := domain.NewConversationManager(domain.ConversationManagerConfig{
-		Client:             client,
-		Model:              modelDescriptor,
-		Scope:              scope,
-		Store:              messages,
-		SessionBrowser:     browser,
-		PromptProvider:     promptProvider,
-		Tools:              mcpManager.Tools,
-		EventHandlers:      handlers,
-		MaxConcurrentTools: cfg.ToolsMaxConcurrent,
-		ContextFullTurns:   cfg.ContextFullTurns,
+		Client:              client,
+		Model:               modelDescriptor,
+		SessionScope:        scope,
+		MessageRepository:   messages,
+		SessionRepository:   browser,
+		PromptProvider:      promptProvider,
+		Tools:               mcpManager.Tools,
+		MessageEventHandler: handlers,
+		MaxConcurrentTools:  cfg.ToolsMaxConcurrent,
+		ContextFullTurns:    cfg.ContextFullTurns,
 	})
 
 	goPromptReader, err := NewGoPromptReader(historyFilePath())

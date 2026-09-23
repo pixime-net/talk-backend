@@ -93,7 +93,7 @@ func (h *Handler) handleResume(w http.ResponseWriter, r *http.Request, input *ty
 		return true
 	}
 
-	hasResolved, hasCancelled, valid := classifyResumeStatuses(input.Resume)
+	hasResolved, hasCancelled, valid := classifyResumeStatus(input.Resume)
 	if !valid {
 		http.Error(w, `{"error":"unknown resume status, expected resolved or cancelled"}`, http.StatusBadRequest)
 		return true
@@ -242,10 +242,10 @@ func (h *Handler) writeSSEError(w http.ResponseWriter, r *http.Request, msg stri
 	_ = sse.WriteEvent(r.Context(), events.NewRunErrorEvent(msg))
 }
 
-// classifyResumeStatuses iterates the resume entries and returns whether any
+// classifyResumeStatus iterates the resume entries and returns whether any
 // resolved or cancelled statuses were found. valid is false if an unknown
 // status is encountered.
-func classifyResumeStatuses(entries []types.ResumeEntry) (hasResolved, hasCancelled, valid bool) {
+func classifyResumeStatus(entries []types.ResumeEntry) (hasResolved, hasCancelled, valid bool) {
 	for _, entry := range entries {
 		switch entry.Status {
 		case types.ResumeStatusResolved:

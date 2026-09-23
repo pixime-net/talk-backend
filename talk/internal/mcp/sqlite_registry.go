@@ -7,6 +7,8 @@ import (
 	"fmt"
 
 	_ "modernc.org/sqlite" // registers the SQLite driver with database/sql
+
+	"github.com/pixime-net/talk/internal/domain"
 )
 
 const mcpSchema = `
@@ -20,21 +22,23 @@ CREATE TABLE IF NOT EXISTS mcp_servers (
 );
 `
 
-// SQLiteRegistry is a SQLite-backed implementation of Registry.
-type SQLiteRegistry struct {
+// SqliteMCPRegistry is a SQLite-backed implementation of Registry.
+type SqliteMCPRegistry struct {
 	db *sql.DB
 }
 
-// NewSQLiteRegistry opens an existing database connection and ensures the mcp_servers table exists.
-func NewSQLiteRegistry(db *sql.DB) (*SQLiteRegistry, error) {
+var _ domain.MCPRegistry = (*SqliteMCPRegistry)(nil)
+
+// NewSqliteMCPRegistry opens an existing database connection and ensures the mcp_servers table exists.
+func NewSqliteMCPRegistry(db *sql.DB) (*SqliteMCPRegistry, error) {
 	if _, err := db.Exec(mcpSchema); err != nil {
 		return nil, fmt.Errorf("creating mcp_servers table: %w", err)
 	}
-	return &SQLiteRegistry{db: db}, nil
+	return &SqliteMCPRegistry{db: db}, nil
 }
 
 // Add inserts a new MCP server configuration.
-func (r *SQLiteRegistry) Add(_ context.Context, cfg ServerConfig) error {
+func (r *SqliteMCPRegistry) Add(_ context.Context, cfg ServerConfig) error {
 	oauthJSON := ""
 	if cfg.OAuth != nil {
 		b, err := json.Marshal(cfg.OAuth)
@@ -54,7 +58,7 @@ func (r *SQLiteRegistry) Add(_ context.Context, cfg ServerConfig) error {
 }
 
 // Remove deletes an MCP server configuration by ID.
-func (r *SQLiteRegistry) Remove(_ context.Context, id string) error {
+func (r *SqliteMCPRegistry) Remove(_ context.Context, id string) error {
 	res, err := r.db.Exec("DELETE FROM mcp_servers WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("deleting mcp server: %w", err)
@@ -67,7 +71,7 @@ func (r *SQLiteRegistry) Remove(_ context.Context, id string) error {
 }
 
 // Get retrieves an MCP server configuration by ID.
-func (r *SQLiteRegistry) Get(_ context.Context, id string) (ServerConfig, error) {
+func (r *SqliteMCPRegistry) Get(_ context.Context, id string) (ServerConfig, error) {
 	row := r.db.QueryRow(
 		"SELECT id, name, url, auth_type, api_key, oauth FROM mcp_servers WHERE id = ?", id,
 	)
@@ -75,7 +79,7 @@ func (r *SQLiteRegistry) Get(_ context.Context, id string) (ServerConfig, error)
 }
 
 // List returns all registered MCP server configurations.
-func (r *SQLiteRegistry) List(_ context.Context) ([]ServerConfig, error) {
+func (r *SqliteMCPRegistry) List(_ context.Context) ([]ServerConfig, error) {
 	rows, err := r.db.Query("SELECT id, name, url, auth_type, api_key, oauth FROM mcp_servers ORDER BY name")
 	if err != nil {
 		return nil, fmt.Errorf("listing mcp servers: %w", err)

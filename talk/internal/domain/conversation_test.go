@@ -182,14 +182,14 @@ func newManager(client *stubClient, tools []Tool) (*ConversationManager, *stubUs
 			ContextWindowTokens:     200_000,
 			ProviderMaxOutputTokens: 64_000,
 		},
-		Scope:              NewSessionScope("test-session", "anonymous"),
-		Store:              store,
-		SessionBrowser:     store,
-		PromptProvider:     &stubPromptProvider{"system"},
-		Tools:              func() []Tool { return tools },
-		EventHandlers:      handlers,
-		MaxConcurrentTools: 2,
-		ContextFullTurns:   -1,
+		SessionScope:        NewSessionScope("test-session", "anonymous"),
+		MessageRepository:   store,
+		SessionRepository:   store,
+		PromptProvider:      &stubPromptProvider{"system"},
+		Tools:               func() []Tool { return tools },
+		MessageEventHandler: handlers,
+		MaxConcurrentTools:  2,
+		ContextFullTurns:    -1,
 	})
 	return mgr, reporter
 }
@@ -431,16 +431,16 @@ func TestConversation_ParallelToolExecution(t *testing.T) {
 	reporter := &stubUsageReporter{}
 	store := &stubStore{}
 	mgr := NewConversationManager(ConversationManagerConfig{
-		Client:             client,
-		Model:              Model{Name: "test-model", OTLPProvider: OTLPProviderAnthropic},
-		Scope:              NewSessionScope("test-session", "anonymous"),
-		Store:              store,
-		SessionBrowser:     store,
-		PromptProvider:     &stubPromptProvider{"system"},
-		Tools:              func() []Tool { return []Tool{tool1, tool2, tool3} },
-		EventHandlers:      NewMessageEventHandlers([][]MessageEventHandler{{store}, {reporter}}),
-		MaxConcurrentTools: 2,
-		ContextFullTurns:   -1,
+		Client:              client,
+		Model:               Model{Name: "test-model", OTLPProvider: OTLPProviderAnthropic},
+		SessionScope:        NewSessionScope("test-session", "anonymous"),
+		MessageRepository:   store,
+		SessionRepository:   store,
+		PromptProvider:      &stubPromptProvider{"system"},
+		Tools:               func() []Tool { return []Tool{tool1, tool2, tool3} },
+		MessageEventHandler: NewMessageEventHandlers([][]MessageEventHandler{{store}, {reporter}}),
+		MaxConcurrentTools:  2,
+		ContextFullTurns:    -1,
 	})
 
 	answer, err := mgr.Chat(context.Background(), "run parallel tools")
@@ -482,16 +482,16 @@ func TestConversation_SequentialWhenMaxConcurrentIsOne(t *testing.T) {
 	reporter := &stubUsageReporter{}
 	store := &stubStore{}
 	mgr := NewConversationManager(ConversationManagerConfig{
-		Client:             client,
-		Model:              Model{Name: "test-model", OTLPProvider: OTLPProviderAnthropic},
-		Scope:              NewSessionScope("test-session", "anonymous"),
-		Store:              store,
-		SessionBrowser:     store,
-		PromptProvider:     &stubPromptProvider{"system"},
-		Tools:              func() []Tool { return []Tool{tool1, tool2} },
-		EventHandlers:      NewMessageEventHandlers([][]MessageEventHandler{{store}, {reporter}}),
-		MaxConcurrentTools: 1,
-		ContextFullTurns:   -1,
+		Client:              client,
+		Model:               Model{Name: "test-model", OTLPProvider: OTLPProviderAnthropic},
+		SessionScope:        NewSessionScope("test-session", "anonymous"),
+		MessageRepository:   store,
+		SessionRepository:   store,
+		PromptProvider:      &stubPromptProvider{"system"},
+		Tools:               func() []Tool { return []Tool{tool1, tool2} },
+		MessageEventHandler: NewMessageEventHandlers([][]MessageEventHandler{{store}, {reporter}}),
+		MaxConcurrentTools:  1,
+		ContextFullTurns:    -1,
 	})
 
 	answer, err := mgr.Chat(context.Background(), "run sequential tools")
@@ -525,16 +525,16 @@ func TestConversation_OneToolMessagePerExecution(t *testing.T) {
 
 	store := &stubStore{}
 	mgr := NewConversationManager(ConversationManagerConfig{
-		Client:             client,
-		Model:              Model{Name: "test-model", OTLPProvider: OTLPProviderAnthropic},
-		Scope:              NewSessionScope("test-session", "anonymous"),
-		Store:              store,
-		SessionBrowser:     store,
-		PromptProvider:     &stubPromptProvider{"system"},
-		Tools:              func() []Tool { return []Tool{tool1, tool2} },
-		EventHandlers:      NewMessageEventHandlers([][]MessageEventHandler{{store}}),
-		MaxConcurrentTools: 1,
-		ContextFullTurns:   -1,
+		Client:              client,
+		Model:               Model{Name: "test-model", OTLPProvider: OTLPProviderAnthropic},
+		SessionScope:        NewSessionScope("test-session", "anonymous"),
+		MessageRepository:   store,
+		SessionRepository:   store,
+		PromptProvider:      &stubPromptProvider{"system"},
+		Tools:               func() []Tool { return []Tool{tool1, tool2} },
+		MessageEventHandler: NewMessageEventHandlers([][]MessageEventHandler{{store}}),
+		MaxConcurrentTools:  1,
+		ContextFullTurns:    -1,
 	})
 
 	_, err := mgr.Chat(context.Background(), "run tools")
@@ -586,16 +586,16 @@ func TestConversation_AssistantToolOnlyResponseGetsSummaryAndTurnID(t *testing.T
 
 	store := &stubStore{}
 	mgr := NewConversationManager(ConversationManagerConfig{
-		Client:             client,
-		Model:              Model{Name: "test-model", OTLPProvider: OTLPProviderAnthropic},
-		Scope:              NewSessionScope("test-session", "anonymous"),
-		Store:              store,
-		SessionBrowser:     store,
-		PromptProvider:     &stubPromptProvider{"system"},
-		Tools:              func() []Tool { return []Tool{tool} },
-		EventHandlers:      NewMessageEventHandlers([][]MessageEventHandler{{store}}),
-		MaxConcurrentTools: 2,
-		ContextFullTurns:   -1,
+		Client:              client,
+		Model:               Model{Name: "test-model", OTLPProvider: OTLPProviderAnthropic},
+		SessionScope:        NewSessionScope("test-session", "anonymous"),
+		MessageRepository:   store,
+		SessionRepository:   store,
+		PromptProvider:      &stubPromptProvider{"system"},
+		Tools:               func() []Tool { return []Tool{tool} },
+		MessageEventHandler: NewMessageEventHandlers([][]MessageEventHandler{{store}}),
+		MaxConcurrentTools:  2,
+		ContextFullTurns:    -1,
 	})
 
 	_, err := mgr.Chat(context.Background(), "route")
@@ -644,9 +644,9 @@ func TestBuildContextMessages_LeanModeUsesHistoryTurns(t *testing.T) {
 	mgr := NewConversationManager(ConversationManagerConfig{
 		Client:             &stubClient{},
 		Model:              Model{Name: "test-model", OTLPProvider: OTLPProviderAnthropic},
-		Scope:              NewSessionScope("test-session", "anonymous"),
-		Store:              store,
-		SessionBrowser:     store,
+		SessionScope:       NewSessionScope("test-session", "anonymous"),
+		MessageRepository:  store,
+		SessionRepository:  store,
 		PromptProvider:     &stubPromptProvider{"system"},
 		Tools:              func() []Tool { return nil },
 		MaxConcurrentTools: 1,
@@ -687,9 +687,9 @@ func TestBuildContextMessages_HybridKeepsLastNDetailedTurns(t *testing.T) {
 	mgr := NewConversationManager(ConversationManagerConfig{
 		Client:             &stubClient{},
 		Model:              Model{Name: "test-model", OTLPProvider: OTLPProviderAnthropic},
-		Scope:              NewSessionScope("test-session", "anonymous"),
-		Store:              store,
-		SessionBrowser:     store,
+		SessionScope:       NewSessionScope("test-session", "anonymous"),
+		MessageRepository:  store,
+		SessionRepository:  store,
 		PromptProvider:     &stubPromptProvider{"system"},
 		Tools:              func() []Tool { return nil },
 		MaxConcurrentTools: 1,
@@ -730,16 +730,16 @@ func TestConversation_ChatUsesExpectedContextSizesByMode(t *testing.T) {
 		tool := &stubTool{name: "weather", result: map[string]any{"ok": true}}
 		store := &stubStore{}
 		mgr := NewConversationManager(ConversationManagerConfig{
-			Client:             client,
-			Model:              Model{Name: "test-model", OTLPProvider: OTLPProviderAnthropic},
-			Scope:              NewSessionScope("test-session", "anonymous"),
-			Store:              store,
-			SessionBrowser:     store,
-			PromptProvider:     &stubPromptProvider{"system"},
-			Tools:              func() []Tool { return []Tool{tool} },
-			EventHandlers:      NewMessageEventHandlers([][]MessageEventHandler{{store}}),
-			MaxConcurrentTools: 1,
-			ContextFullTurns:   mode,
+			Client:              client,
+			Model:               Model{Name: "test-model", OTLPProvider: OTLPProviderAnthropic},
+			SessionScope:        NewSessionScope("test-session", "anonymous"),
+			MessageRepository:   store,
+			SessionRepository:   store,
+			PromptProvider:      &stubPromptProvider{"system"},
+			Tools:               func() []Tool { return []Tool{tool} },
+			MessageEventHandler: NewMessageEventHandlers([][]MessageEventHandler{{store}}),
+			MaxConcurrentTools:  1,
+			ContextFullTurns:    mode,
 		})
 
 		for _, input := range []string{"Q1", "Q2", "Q3"} {

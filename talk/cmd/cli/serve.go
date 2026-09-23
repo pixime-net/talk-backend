@@ -20,6 +20,7 @@ import (
 	"github.com/pixime-net/talk/internal/llm/router"
 	"github.com/pixime-net/talk/internal/mcp"
 	sqlitestore "github.com/pixime-net/talk/internal/memory/sqlite"
+	"github.com/pixime-net/talk/internal/observability"
 	"github.com/spf13/cobra"
 )
 
@@ -72,18 +73,23 @@ func runServe(ctx context.Context, port, systemFile string) error {
 	// LLM router for per-request model resolution.
 	llmRouter := router.NewLLMRouter(cfg)
 
-	pp := buildPromptProvider(systemFile)
+	promptProvider := buildPromptProvider(systemFile)
 
 	// Open shared SQLite store.
 	dbPath := storeDBPath()
-	messages, browser, err := sqlitestore.New(dbPath)
+	conn, err := sqlitestore.Open(dbPath)
 	if err != nil {
 		return fmt.Errorf("opening session store: %w", err)
 	}
-	defer func() { _ = messages.Close() }()
+	defer func() { _ = conn.Close() }()
+
+	messages, sessionRepository, storeEventHandler, err := sqlitestore.NewSqliteStore(conn)
+	if err != nil {
+		return fmt.Errorf("initializing session store: %w", err)
+	}
 
 	// MCP server registry and manager.
-	mcpRegistry, err := mcp.NewSQLiteRegistry(messages.DB())
+	mcpRegistry, err := mcp.NewSqliteMCPRegistry(conn)
 	if err != nil {
 		return fmt.Errorf("initializing mcp registry: %w", err)
 	}
@@ -91,8 +97,31 @@ func runServe(ctx context.Context, port, systemFile string) error {
 	mcpManager.ConnectAll(ctx)
 	defer mcpManager.Close()
 
+	// add eventHandlers : storeEventHandler, console & langfuse
+	var eventHandlers []domain.MessageEventHandler
+	eventHandlers = append(eventHandlers, storeEventHandler)
+	if cfg.ConsoleUsageReporter {
+		eventHandlers = append(eventHandlers, &observability.ConsoleUsageReporter{})
+	}
+	if cfg.LangfuseSecretKey != "" && cfg.LangfusePublicKey != "" {
+		eventHandlers = append(eventHandlers, observability.NewLangfuseUsageReporter(observability.LangfuseConfig{
+			PublicKey: cfg.LangfusePublicKey,
+			SecretKey: cfg.LangfuseSecretKey,
+			BaseURL:   cfg.LangfuseBaseURL,
+		}))
+	}
+
 	// ChatFunc resolves model per request from the alias passed by the handler.
-	chatFn := buildChatFunc(log, cfg, llmRouter, pp, messages, browser, mcpManager)
+	chatFn := buildChatFunc(buildChatFuncParams{
+		log:               log,
+		cfg:               cfg,
+		router:            llmRouter,
+		promptProvider:    promptProvider,
+		handlers:          eventHandlers,
+		messageRepository: messages,
+		sessionRepository: sessionRepository,
+		mcpManager:        mcpManager,
+	})
 
 	mux := http.NewServeMux()
 
@@ -179,50 +208,54 @@ func methodNotAllowed(w http.ResponseWriter, _ *http.Request) {
 	http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 }
 
+// buildChatFuncParams groups all parameters required to build the ChatFunc.
+type buildChatFuncParams struct {
+	log               *slog.Logger
+	cfg               *config.Config
+	router            *router.Router
+	promptProvider    domain.PromptProvider
+	handlers          []domain.MessageEventHandler
+	messageRepository domain.MessageRepository
+	sessionRepository domain.SessionRepository
+	mcpManager        *mcp.Manager
+}
+
 // buildChatFunc constructs the ChatFunc that resolves the model, wires the
 // conversation manager, and streams events back via the SSE writer.
 // errors returned by the ChatFunc are sanitized for end users,
 // while technical details are logged at ERROR level.
 // ChatFunc and its relative errors are designed to be used in the AG-UI HTTP handler.
-func buildChatFunc(
-	log *slog.Logger,
-	cfg *config.Config,
-	llmRouter *router.Router,
-	pp domain.PromptProvider,
-	messages *sqlitestore.MessageRepository,
-	browser *sqlitestore.Browser,
-	mcpManager *mcp.Manager,
-) agui.ChatFunc {
+func buildChatFunc(params buildChatFuncParams) agui.ChatFunc {
 	return func(reqCtx context.Context, threadID string, modelAlias string, aguiMessages []types.Message, opts agui.ChatOptions) error {
-		client, err := llmRouter.Get(modelAlias)
+		client, err := params.router.Get(modelAlias)
 		if err != nil {
-			log.Error("resolving model", slog.String("model", modelAlias), slog.String("error", err.Error()))
+			params.log.Error("resolving model", slog.String("model", modelAlias), slog.String("error", err.Error()))
 			return sanitizeError(err)
 		}
 
-		modelDescriptor, err := domain.Lookup(modelAlias)
+		model, err := domain.Lookup(modelAlias)
 		if err != nil {
-			log.Error("looking up model", slog.String("model", modelAlias), slog.String("error", err.Error()))
+			params.log.Error("looking up model", slog.String("model", modelAlias), slog.String("error", err.Error()))
 			return sanitizeError(err)
 		}
 
-		aguiEmitter := agui.NewAGUIEmitter(opts.SSEWriter, log)
+		aguiEmitter := agui.NewAGUIEmitter(opts.SSEWriter, params.log)
 		handlers := domain.NewMessageEventHandlers([][]domain.MessageEventHandler{
-			{aguiEmitter, messages},
+			append([]domain.MessageEventHandler{aguiEmitter}, params.handlers...),
 		})
 
 		scope := domain.NewSessionScope(threadID, "anonymous")
 		manager := domain.NewConversationManager(domain.ConversationManagerConfig{
-			Client:             client,
-			Model:              modelDescriptor,
-			Scope:              scope,
-			Store:              messages,
-			SessionBrowser:     browser,
-			PromptProvider:     pp,
-			Tools:              mcpManager.Tools,
-			EventHandlers:      handlers,
-			MaxConcurrentTools: cfg.ToolsMaxConcurrent,
-			ContextFullTurns:   cfg.ContextFullTurns,
+			Client:              client,
+			Model:               model,
+			SessionScope:        scope,
+			MessageRepository:   params.messageRepository,
+			SessionRepository:   params.sessionRepository,
+			PromptProvider:      params.promptProvider,
+			Tools:               params.mcpManager.Tools,
+			MessageEventHandler: handlers,
+			MaxConcurrentTools:  params.cfg.ToolsMaxConcurrent,
+			ContextFullTurns:    params.cfg.ContextFullTurns,
 		})
 
 		userInput := extractUserInput(aguiMessages)
@@ -236,7 +269,7 @@ func buildChatFunc(
 
 		_, chatErr := manager.Chat(reqCtx, userInput)
 		if chatErr != nil {
-			log.Error("chat error",
+			params.log.Error("chat error",
 				slog.String("threadId", threadID),
 				slog.String("model", modelAlias),
 				slog.String("error", chatErr.Error()),

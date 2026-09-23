@@ -47,14 +47,14 @@ func (e *AGUIEmitter) HandleMessageEvent(ctx context.Context, event domain.Messa
 		e.emitTextMessageEvents(ctx, event.Content)
 	}
 	if event.Kind == domain.CallKindInitial || event.Kind == domain.CallKindToolResult {
-		e.emitCustomEvent(ctx, tokenUsageEventName, domain.NewTokenUsagePayload(event.Model, event.Usage))
+		e.emitCustomEvent(ctx, tokenUsageEventName, NewTokenUsagePayload(event.Model, event.Usage))
 	}
 	return nil
 }
 
 // HandleTurnEvent emits the authoritative token total for a completed turn.
 func (e *AGUIEmitter) HandleTurnEvent(ctx context.Context, event domain.TurnEvent) error {
-	e.emitCustomEvent(ctx, turnUsageEventName, domain.NewTurnUsagePayload(event.Model, event.TotalUsage))
+	e.emitCustomEvent(ctx, turnUsageEventName, NewTurnUsagePayload(event.Model, event.TotalUsage))
 	return nil
 }
 
