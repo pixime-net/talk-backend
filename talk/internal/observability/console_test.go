@@ -118,7 +118,7 @@ func TestConsoleUsageReporter_HandleMessageEvent_UnknownKind(t *testing.T) {
 
 func TestConsoleUsageReporter_HandleToolCallStart(t *testing.T) {
 	reporter := ConsoleUsageReporter{}
-	event := domain.ToolCallEvent{
+	event := domain.ToolStartEvent{
 		ToolCall: domain.ToolCall{
 			Name:  "get_weather",
 			Input: map[string]any{"city": "Paris"},
@@ -126,7 +126,7 @@ func TestConsoleUsageReporter_HandleToolCallStart(t *testing.T) {
 	}
 
 	output := captureStdout(t, func() {
-		err := reporter.HandleToolCallStart(context.Background(), event)
+		err := reporter.HandleToolStartEvent(context.Background(), event)
 		if err != nil {
 			t.Fatalf("HandleToolCallStart unexpected error: %v", err)
 		}
@@ -145,7 +145,7 @@ func TestConsoleUsageReporter_HandleToolCallStart(t *testing.T) {
 
 func TestConsoleUsageReporter_HandleTurnEvent(t *testing.T) {
 	reporter := ConsoleUsageReporter{}
-	event := domain.TurnEvent{
+	event := domain.TurnEndEvent{
 		Model:     domain.Model{Name: "sonnet-4.6"},
 		CallCount: 2,
 		TotalUsage: domain.Usage{
@@ -158,7 +158,7 @@ func TestConsoleUsageReporter_HandleTurnEvent(t *testing.T) {
 	}
 
 	output := captureStdout(t, func() {
-		err := reporter.HandleTurnEvent(context.Background(), event)
+		err := reporter.HandleTurnEndEvent(context.Background(), event)
 		if err != nil {
 			t.Fatalf("HandleTurnEvent unexpected error: %v", err)
 		}
@@ -180,7 +180,7 @@ func TestConsoleUsageReporter_HandleTurnEvent(t *testing.T) {
 
 func TestConsoleUsageReporter_HandleToolCallEnd_NoOp(t *testing.T) {
 	reporter := ConsoleUsageReporter{}
-	if err := reporter.HandleToolCallEnd(context.Background(), domain.ToolCallEndEvent{}); err != nil {
+	if err := reporter.HandleToolEndEvent(context.Background(), domain.ToolEndEvent{}); err != nil {
 		t.Fatalf("HandleToolCallEnd unexpected error: %v", err)
 	}
 }

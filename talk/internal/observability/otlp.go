@@ -105,12 +105,12 @@ func (l *LangfuseUsageReporter) apiCallToOTLP(messageEvent domain.MessageEvent) 
 		{Key: "gen_ai.operation.name", Value: stringValue(string(messageEvent.Kind))},
 
 		// Input and output for Langfuse
-		{Key: "gen_ai.prompt", Value: stringValue(messageEvent.APICall.Input)},
-		{Key: "gen_ai.completion", Value: stringValue(messageEvent.APICall.Output)},
+		{Key: "gen_ai.prompt", Value: stringValue(messageEvent.Input)},
+		{Key: "gen_ai.completion", Value: stringValue(messageEvent.Output)},
 
 		// Langfuse-specific input/output
-		{Key: "langfuse.observation.input", Value: stringValue(messageEvent.APICall.Input)},
-		{Key: "langfuse.observation.output", Value: stringValue(messageEvent.APICall.Output)},
+		{Key: "langfuse.observation.input", Value: stringValue(messageEvent.Input)},
+		{Key: "langfuse.observation.output", Value: stringValue(messageEvent.Output)},
 
 		// Usage information
 		{Key: "gen_ai.usage.input_tokens", Value: intValue(messageEvent.Usage.InputTokens)},
@@ -163,7 +163,7 @@ func (l *LangfuseUsageReporter) apiCallToOTLP(messageEvent domain.MessageEvent) 
 }
 
 // conversationTurnToOTLP converts a domain.TurnEvent to OpenTelemetry format
-func (l *LangfuseUsageReporter) conversationTurnToOTLP(turnEvent domain.TurnEvent) (*OTLPTrace, error) {
+func (l *LangfuseUsageReporter) conversationTurnToOTLP(turnEvent domain.TurnEndEvent) (*OTLPTrace, error) {
 	traceID := turnEvent.TurnID
 	spanID := turnEvent.TurnSpanID
 

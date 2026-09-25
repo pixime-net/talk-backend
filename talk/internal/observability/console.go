@@ -14,7 +14,7 @@ import (
 // Can be combined with other reporters like LangfuseUsageReporter for dual logging.
 type ConsoleUsageReporter struct{}
 
-var _ domain.MessageEventHandler = (*ConsoleUsageReporter)(nil) // compile-time interface check
+var _ domain.EventHandler = (*ConsoleUsageReporter)(nil) // compile-time interface check
 
 // HandleMessageEvent is called for every message event and prints usage for assistant LLM calls
 // and tool invocation details for tool calls.
@@ -46,8 +46,8 @@ func (ConsoleUsageReporter) HandleMessageEvent(_ context.Context, messageEvent d
 	return nil
 }
 
-// HandleToolCallStart is called right before tool execution starts.
-func (ConsoleUsageReporter) HandleToolCallStart(_ context.Context, e domain.ToolCallEvent) error {
+// HandleToolStartEvent is called right before tool execution starts.
+func (ConsoleUsageReporter) HandleToolStartEvent(_ context.Context, e domain.ToolStartEvent) error {
 	inputJSON, _ := json.Marshal(e.ToolCall.Input)
 	fmt.Printf(
 		faint("  ↳   [tool call] tool=%s args=%s\n"),
@@ -57,16 +57,16 @@ func (ConsoleUsageReporter) HandleToolCallStart(_ context.Context, e domain.Tool
 	return nil
 }
 
-// HandleToolCallEnd is called after tool execution completes.
-func (ConsoleUsageReporter) HandleToolCallEnd(_ context.Context, _ domain.ToolCallEndEvent) error {
+// HandleToolEndEvent is called after tool execution completes.
+func (ConsoleUsageReporter) HandleToolEndEvent(_ context.Context, _ domain.ToolEndEvent) error {
 	return nil
 }
 
-// HandleTurnEvent is called after every conversation turn and prints aggregated usage.
+// HandleTurnEndEvent is called after every conversation turn and prints aggregated usage.
 //
 // Parameters:
 // - e: The TurnEvent containing details about the conversation turn and its token usage.
-func (ConsoleUsageReporter) HandleTurnEvent(_ context.Context, e domain.TurnEvent) error {
+func (ConsoleUsageReporter) HandleTurnEndEvent(_ context.Context, e domain.TurnEndEvent) error {
 	reasoningInfo := ""
 	if e.TotalUsage.ReasoningTokens > 0 {
 		reasoningInfo = fmt.Sprintf(" reasoning=%5d", e.TotalUsage.ReasoningTokens)

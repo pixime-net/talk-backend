@@ -377,11 +377,11 @@ func TestHandler_ToolCallEventsInSSEStream(t *testing.T) {
 		emitter := NewAGUIEmitter(opts.SSEWriter, nil)
 		tc := domain.ToolCall{ID: "call-abc", Name: "get_weather", Input: map[string]any{"city": "Paris"}}
 
-		_ = emitter.HandleToolCallStart(ctx, domain.ToolCallEvent{
+		_ = emitter.HandleToolStartEvent(ctx, domain.ToolStartEvent{
 			TurnID:   "turn-1",
 			ToolCall: tc,
 		})
-		_ = emitter.HandleToolCallEnd(ctx, domain.ToolCallEndEvent{
+		_ = emitter.HandleToolEndEvent(ctx, domain.ToolEndEvent{
 			TurnID:   "turn-1",
 			ToolCall: tc,
 			Result:   domain.ToolResult{ToolCallID: "call-abc", Content: "sunny"},
@@ -444,8 +444,8 @@ func TestHandler_MultipleToolCallsInOneIteration(t *testing.T) {
 			{ID: "call-2", Name: "get_time", Input: map[string]any{"tz": "CET"}},
 		}
 		for _, tc := range tools {
-			_ = emitter.HandleToolCallStart(ctx, domain.ToolCallEvent{TurnID: "turn-1", ToolCall: tc})
-			_ = emitter.HandleToolCallEnd(ctx, domain.ToolCallEndEvent{TurnID: "turn-1", ToolCall: tc, Result: domain.ToolResult{ToolCallID: tc.ID, Content: "ok"}})
+			_ = emitter.HandleToolStartEvent(ctx, domain.ToolStartEvent{TurnID: "turn-1", ToolCall: tc})
+			_ = emitter.HandleToolEndEvent(ctx, domain.ToolEndEvent{TurnID: "turn-1", ToolCall: tc, Result: domain.ToolResult{ToolCallID: tc.ID, Content: "ok"}})
 		}
 		return emitter.HandleMessageEvent(ctx, domain.MessageEvent{
 			Message: domain.Message{Role: domain.RoleAssistant, Content: "done"},
@@ -495,13 +495,13 @@ func TestHandler_MultiIterationToolLoop(t *testing.T) {
 
 		// Simulate iteration 1: tool call.
 		tc1 := domain.ToolCall{ID: "call-iter1", Name: "search", Input: map[string]any{"q": "hello"}}
-		_ = emitter.HandleToolCallStart(ctx, domain.ToolCallEvent{TurnID: "turn-1", ToolCall: tc1})
-		_ = emitter.HandleToolCallEnd(ctx, domain.ToolCallEndEvent{TurnID: "turn-1", ToolCall: tc1, Result: domain.ToolResult{ToolCallID: tc1.ID, Content: "found"}})
+		_ = emitter.HandleToolStartEvent(ctx, domain.ToolStartEvent{TurnID: "turn-1", ToolCall: tc1})
+		_ = emitter.HandleToolEndEvent(ctx, domain.ToolEndEvent{TurnID: "turn-1", ToolCall: tc1, Result: domain.ToolResult{ToolCallID: tc1.ID, Content: "found"}})
 
 		// Simulate iteration 2: another tool call.
 		tc2 := domain.ToolCall{ID: "call-iter2", Name: "fetch", Input: map[string]any{"url": "http://x"}}
-		_ = emitter.HandleToolCallStart(ctx, domain.ToolCallEvent{TurnID: "turn-1", ToolCall: tc2})
-		_ = emitter.HandleToolCallEnd(ctx, domain.ToolCallEndEvent{TurnID: "turn-1", ToolCall: tc2, Result: domain.ToolResult{ToolCallID: tc2.ID, Content: "data"}})
+		_ = emitter.HandleToolStartEvent(ctx, domain.ToolStartEvent{TurnID: "turn-1", ToolCall: tc2})
+		_ = emitter.HandleToolEndEvent(ctx, domain.ToolEndEvent{TurnID: "turn-1", ToolCall: tc2, Result: domain.ToolResult{ToolCallID: tc2.ID, Content: "data"}})
 
 		return emitter.HandleMessageEvent(ctx, domain.MessageEvent{
 			Message: domain.Message{Role: domain.RoleAssistant, Content: "final answer"},
@@ -736,8 +736,8 @@ func TestHandler_ReasoningWithToolLoop(t *testing.T) {
 			},
 		})
 		tc1 := domain.ToolCall{ID: "call-1", Name: "search", Input: map[string]any{"q": "test"}}
-		_ = emitter.HandleToolCallStart(ctx, domain.ToolCallEvent{TurnID: "turn-1", ToolCall: tc1})
-		_ = emitter.HandleToolCallEnd(ctx, domain.ToolCallEndEvent{TurnID: "turn-1", ToolCall: tc1, Result: domain.ToolResult{ToolCallID: "call-1", Content: "result"}})
+		_ = emitter.HandleToolStartEvent(ctx, domain.ToolStartEvent{TurnID: "turn-1", ToolCall: tc1})
+		_ = emitter.HandleToolEndEvent(ctx, domain.ToolEndEvent{TurnID: "turn-1", ToolCall: tc1, Result: domain.ToolResult{ToolCallID: "call-1", Content: "result"}})
 
 		// Iteration 2: LLM returns thinking + final answer.
 		return emitter.HandleMessageEvent(ctx, domain.MessageEvent{

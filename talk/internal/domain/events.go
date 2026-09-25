@@ -16,15 +16,6 @@ const (
 	CallKindToolResult CallKind = "tool_result"
 )
 
-// APICallEvent describes a single LLM call payload.
-// used by MessageEvent to capture the details of the underlying API call.
-type APICallEvent struct {
-	StartedAt time.Time
-	EndedAt   time.Time
-	Input     string
-	Output    string
-}
-
 // MessageEvent is emitted for each message produced during a turn.
 type MessageEvent struct {
 	Message
@@ -35,11 +26,12 @@ type MessageEvent struct {
 	Usage        Usage
 	StartedAt    time.Time
 	EndedAt      time.Time
-	APICall      APICallEvent
+	Input        string
+	Output       string
 }
 
-// TurnEvent is emitted once at the end of a full Chat() turn.
-type TurnEvent struct {
+// TurnEndEvent is emitted once at the end of a full Chat() turn.
+type TurnEndEvent struct {
 	TurnID          string
 	TurnSpanID      string
 	StartedAt       time.Time
@@ -57,15 +49,15 @@ type TurnEvent struct {
 	InterruptState  string
 }
 
-// ToolCallEvent is emitted when a tool call is about to be executed.
-type ToolCallEvent struct {
+// ToolStartEvent is emitted when a tool call is about to be executed.
+type ToolStartEvent struct {
 	TurnID    string
 	ToolCall  ToolCall
 	StartedAt time.Time
 }
 
-// ToolCallEndEvent is emitted when a tool call has completed execution.
-type ToolCallEndEvent struct {
+// ToolEndEvent is emitted when a tool call has completed execution.
+type ToolEndEvent struct {
 	TurnID    string
 	ToolCall  ToolCall
 	Result    ToolResult

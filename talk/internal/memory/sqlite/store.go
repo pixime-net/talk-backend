@@ -87,7 +87,7 @@ type SqliteMessageEventHandler struct{ *db }
 
 var _ domain.MessageRepository = (*SqliteMessageRepository)(nil)
 var _ domain.SessionRepository = (*SqliteSessionRepository)(nil)
-var _ domain.MessageEventHandler = (*SqliteMessageEventHandler)(nil)
+var _ domain.EventHandler = (*SqliteMessageEventHandler)(nil)
 
 // Open opens and initializes a SQLite database at dbPath.
 func Open(dbPath string) (*sql.DB, error) {
@@ -167,8 +167,8 @@ func (r *SqliteMessageEventHandler) HandleMessageEvent(ctx context.Context, even
 	return nil
 }
 
-// HandleTurnEvent persists one completed turn into history_turns.
-func (r *SqliteMessageEventHandler) HandleTurnEvent(ctx context.Context, event domain.TurnEvent) error {
+// HandleTurnEndEvent persists one completed turn into history_turns.
+func (r *SqliteMessageEventHandler) HandleTurnEndEvent(ctx context.Context, event domain.TurnEndEvent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -219,13 +219,13 @@ func (r *SqliteMessageEventHandler) HandleTurnEvent(ctx context.Context, event d
 	return nil
 }
 
-// HandleToolCallStart is a no-op for the SQLite store.
-func (r *SqliteMessageEventHandler) HandleToolCallStart(_ context.Context, _ domain.ToolCallEvent) error {
+// HandleToolStartEvent is a no-op for the SQLite store.
+func (r *SqliteMessageEventHandler) HandleToolStartEvent(_ context.Context, _ domain.ToolStartEvent) error {
 	return nil
 }
 
-// HandleToolCallEnd is a no-op for the SQLite store.
-func (r *SqliteMessageEventHandler) HandleToolCallEnd(_ context.Context, _ domain.ToolCallEndEvent) error {
+// HandleToolEndEvent is a no-op for the SQLite store.
+func (r *SqliteMessageEventHandler) HandleToolEndEvent(_ context.Context, _ domain.ToolEndEvent) error {
 	return nil
 }
 
@@ -233,8 +233,8 @@ func (r *SqliteMessageRepository) HandleMessageEvent(ctx context.Context, event 
 	return (&SqliteMessageEventHandler{r.db}).HandleMessageEvent(ctx, event)
 }
 
-func (r *SqliteMessageRepository) HandleTurnEvent(ctx context.Context, event domain.TurnEvent) error {
-	return (&SqliteMessageEventHandler{r.db}).HandleTurnEvent(ctx, event)
+func (r *SqliteMessageRepository) HandleTurnEvent(ctx context.Context, event domain.TurnEndEvent) error {
+	return (&SqliteMessageEventHandler{r.db}).HandleTurnEndEvent(ctx, event)
 }
 
 func (r *SqliteMessageEventHandler) isSessionMaterialized(ctx context.Context, sessionID string) (bool, error) {

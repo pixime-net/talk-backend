@@ -20,11 +20,11 @@ type ToolExecutionResult struct {
 type ToolExecutor struct {
 	toolsProvider func() []Tool
 	maxConcurrent int
-	eventHandler  MessageEventHandler
+	eventHandler  EventHandler
 }
 
 // NewToolExecutor creates a new ToolExecutor with the given tools provider and concurrency limit.
-func NewToolExecutor(toolsProvider func() []Tool, maxConcurrent int, eventHandler MessageEventHandler) *ToolExecutor {
+func NewToolExecutor(toolsProvider func() []Tool, maxConcurrent int, eventHandler EventHandler) *ToolExecutor {
 	return &ToolExecutor{toolsProvider: toolsProvider, maxConcurrent: maxConcurrent, eventHandler: eventHandler}
 }
 
@@ -85,7 +85,7 @@ func (e *ToolExecutor) executeSequential(ctx context.Context, turnID string, cal
 func (e *ToolExecutor) executeSingleTool(ctx context.Context, turnID string, call ToolCall) (ToolExecutionResult, error) {
 	startedAt := time.Now()
 	if e.eventHandler != nil {
-		if err := e.eventHandler.HandleToolCallStart(ctx, ToolCallEvent{
+		if err := e.eventHandler.HandleToolStartEvent(ctx, ToolStartEvent{
 			TurnID:    turnID,
 			ToolCall:  call,
 			StartedAt: startedAt,
@@ -99,7 +99,7 @@ func (e *ToolExecutor) executeSingleTool(ctx context.Context, turnID string, cal
 		result = ToolResult{ToolCallID: call.ID, Content: formatToolError(execErr)}
 	}
 	if e.eventHandler != nil {
-		if err := e.eventHandler.HandleToolCallEnd(ctx, ToolCallEndEvent{
+		if err := e.eventHandler.HandleToolEndEvent(ctx, ToolEndEvent{
 			TurnID:    turnID,
 			ToolCall:  call,
 			Result:    result,

@@ -16,7 +16,7 @@ var scope = domain.NewSessionScope("sess-1", "user1")
 
 type messageStore interface {
 	HandleMessageEvent(context.Context, domain.MessageEvent) error
-	HandleTurnEvent(context.Context, domain.TurnEvent) error
+	HandleTurnEvent(context.Context, domain.TurnEndEvent) error
 }
 
 type messageCleaner interface {
@@ -50,7 +50,7 @@ func mustAddMessage(t *testing.T, store messageStore, msg domain.Message, scope 
 	if msg.Role == domain.RoleUser {
 		sqliteLastTurnIDBySession[scope.SessionID()] = msg.TurnID
 		sqliteLastQuestionBySession[scope.SessionID()] = msg.Content
-		if err := store.HandleTurnEvent(context.Background(), domain.TurnEvent{
+		if err := store.HandleTurnEvent(context.Background(), domain.TurnEndEvent{
 			TurnID:       msg.TurnID,
 			TurnSpanID:   "span-1",
 			SessionScope: scope,
@@ -66,7 +66,7 @@ func mustAddMessage(t *testing.T, store messageStore, msg domain.Message, scope 
 	}
 
 	if msg.Role == domain.RoleAssistant && msg.Content != "" && len(msg.ToolCalls) == 0 {
-		if err := store.HandleTurnEvent(context.Background(), domain.TurnEvent{
+		if err := store.HandleTurnEvent(context.Background(), domain.TurnEndEvent{
 			TurnID:       msg.TurnID,
 			TurnSpanID:   "span-1",
 			SessionScope: scope,
@@ -97,7 +97,7 @@ func newTestStore(t *testing.T) (*SqliteMessageRepository, *SqliteSessionReposit
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	cleanup := func() { _ = r.db.conn.Close() }
+	cleanup := func() { _ = r.conn.Close() }
 	t.Cleanup(cleanup)
 	return r, b, cleanup
 }
@@ -278,7 +278,7 @@ func TestStore_ListSessionsFiltersByUserID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = r.db.conn.Close() }()
+	defer func() { _ = r.conn.Close() }()
 
 	aliceScope := domain.NewSessionScope("sess-a", "alice")
 	bobScope := domain.NewSessionScope("sess-b", "bob")
@@ -406,14 +406,14 @@ func TestStore_PersistenceAcrossReopen(t *testing.T) {
 	}
 	mustAddMessage(t, r1, domain.Message{Role: domain.RoleUser, Content: "persistent question"}, scope)
 	mustAddMessage(t, r1, domain.Message{Role: domain.RoleAssistant, Content: "persistent answer"}, scope)
-	_ = r1.db.conn.Close()
+	_ = r1.conn.Close()
 
 	// Reopen — messages should be available from disk
 	r2, _, err := newStoreAtPath(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = r2.db.conn.Close() }()
+	defer func() { _ = r2.conn.Close() }()
 
 	msgs, _ := r2.AllMessages(context.Background(), scope.SessionID())
 	if len(msgs) != 2 {
@@ -436,14 +436,14 @@ func TestStore_PersistenceSessionsListAfterReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	mustAddMessage(t, r1, domain.Message{Role: domain.RoleUser, Content: "q1"}, scope)
-	_ = r1.db.conn.Close()
+	_ = r1.conn.Close()
 
 	// Reopen — should still list the session
 	_, b2, err := newStoreAtPath(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = b2.db.conn.Close() }()
+	defer func() { _ = b2.conn.Close() }()
 
 	sessions, _ := b2.ListSessions(context.Background(), "user1")
 	if len(sessions) != 1 {
@@ -578,7 +578,7 @@ func TestStore_AddMessage_AfterClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = s.db.conn.Close()
+	_ = s.conn.Close()
 
 	if err := s.HandleMessageEvent(context.Background(), domain.MessageEvent{
 		Message:      domain.Message{Role: domain.RoleUser, Content: "hello"},
@@ -599,7 +599,7 @@ func TestStore_ClearMessages_AfterClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = s.db.conn.Close()
+	_ = s.conn.Close()
 
 	if err := s.ClearMessages(context.Background(), scope.SessionID()); err == nil {
 		t.Fatal("expected error on closed DB")
@@ -613,7 +613,7 @@ func TestStore_ListSessions_AfterClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = b.db.conn.Close()
+	_ = b.conn.Close()
 
 	_, err = b.ListSessions(context.Background(), "user1")
 	if err == nil {
@@ -628,7 +628,7 @@ func TestStore_LoadHistoryTurns_AfterClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = b.db.conn.Close()
+	_ = b.conn.Close()
 
 	_, err = b.LoadHistoryTurnsFromSession(context.Background(), "sess-1")
 	if err == nil {
@@ -764,7 +764,7 @@ func TestStore_HandleTurnEvent_StatusPersisted(t *testing.T) {
 	}
 
 	// Persist a complete turn.
-	if err := s.HandleTurnEvent(context.Background(), domain.TurnEvent{
+	if err := s.HandleTurnEvent(context.Background(), domain.TurnEndEvent{
 		TurnID:       "t1",
 		TurnSpanID:   "s1",
 		SessionScope: scope,
@@ -785,7 +785,7 @@ func TestStore_HandleTurnEvent_StatusPersisted(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.HandleTurnEvent(context.Background(), domain.TurnEvent{
+	if err := s.HandleTurnEvent(context.Background(), domain.TurnEndEvent{
 		TurnID:       "t2",
 		TurnSpanID:   "s2",
 		SessionScope: scope,
@@ -827,7 +827,7 @@ func TestStore_HandleTurnEvent_EmptyStatusDefaultsToComplete(t *testing.T) {
 	}
 
 	// Persist turn with empty status — should default to "complete".
-	if err := s.HandleTurnEvent(context.Background(), domain.TurnEvent{
+	if err := s.HandleTurnEvent(context.Background(), domain.TurnEndEvent{
 		TurnID:       "t1",
 		TurnSpanID:   "s1",
 		SessionScope: scope,
@@ -865,7 +865,7 @@ func TestStore_HandleTurnEvent_InterruptFieldsPersisted(t *testing.T) {
 	}
 
 	// Persist turn with interrupt fields.
-	if err := s.HandleTurnEvent(context.Background(), domain.TurnEvent{
+	if err := s.HandleTurnEvent(context.Background(), domain.TurnEndEvent{
 		TurnID:          "t1",
 		TurnSpanID:      "s1",
 		SessionScope:    scope,
@@ -911,7 +911,7 @@ func TestStore_Migration_ColumnsExistOnFreshDB(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.HandleTurnEvent(context.Background(), domain.TurnEvent{
+	if err := s.HandleTurnEvent(context.Background(), domain.TurnEndEvent{
 		TurnID:       "t1",
 		TurnSpanID:   "s1",
 		SessionScope: scope,

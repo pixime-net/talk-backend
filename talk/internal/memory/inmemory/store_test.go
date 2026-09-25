@@ -13,7 +13,7 @@ var scope = domain.NewSessionScope("sess-1", "user1")
 
 type messageStore interface {
 	HandleMessageEvent(context.Context, domain.MessageEvent) error
-	HandleTurnEvent(context.Context, domain.TurnEvent) error
+	HandleTurnEvent(context.Context, domain.TurnEndEvent) error
 }
 
 type messageCleaner interface {
@@ -47,7 +47,7 @@ func mustAddMessage(t *testing.T, store messageStore, msg domain.Message, scope 
 	if msg.Role == domain.RoleUser {
 		lastTurnIDBySession[scope.SessionID()] = msg.TurnID
 		lastQuestionBySession[scope.SessionID()] = msg.Content
-		if err := store.HandleTurnEvent(context.Background(), domain.TurnEvent{
+		if err := store.HandleTurnEvent(context.Background(), domain.TurnEndEvent{
 			TurnID:       msg.TurnID,
 			TurnSpanID:   "span-1",
 			SessionScope: scope,
@@ -63,7 +63,7 @@ func mustAddMessage(t *testing.T, store messageStore, msg domain.Message, scope 
 	}
 
 	if msg.Role == domain.RoleAssistant && msg.Content != "" && len(msg.ToolCalls) == 0 {
-		if err := store.HandleTurnEvent(context.Background(), domain.TurnEvent{
+		if err := store.HandleTurnEvent(context.Background(), domain.TurnEndEvent{
 			TurnID:       msg.TurnID,
 			TurnSpanID:   "span-1",
 			SessionScope: scope,

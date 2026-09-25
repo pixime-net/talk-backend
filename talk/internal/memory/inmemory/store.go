@@ -35,7 +35,7 @@ type InMemoryMessageEventHandler struct{ *db }
 
 var _ domain.MessageRepository = (*InMemoryMessageRepository)(nil)
 var _ domain.SessionRepository = (*InMemorySessionRepository)(nil)
-var _ domain.MessageEventHandler = (*InMemoryMessageEventHandler)(nil)
+var _ domain.EventHandler = (*InMemoryMessageEventHandler)(nil)
 
 // NewInMemoryStore creates in-memory repositories and an event handler sharing the same data.
 func NewInMemoryStore() (*InMemoryMessageRepository, *InMemorySessionRepository, *InMemoryMessageEventHandler) {
@@ -72,8 +72,8 @@ func (r *InMemoryMessageEventHandler) HandleMessageEvent(_ context.Context, even
 	return nil
 }
 
-// HandleTurnEvent updates turn history for one completed turn.
-func (r *InMemoryMessageEventHandler) HandleTurnEvent(_ context.Context, event domain.TurnEvent) error {
+// HandleTurnEndEvent updates turn history for one completed turn.
+func (r *InMemoryMessageEventHandler) HandleTurnEndEvent(_ context.Context, event domain.TurnEndEvent) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -105,13 +105,13 @@ func (r *InMemoryMessageEventHandler) HandleTurnEvent(_ context.Context, event d
 	return nil
 }
 
-// HandleToolCallStart is a no-op for the in-memory store.
-func (r *InMemoryMessageEventHandler) HandleToolCallStart(_ context.Context, _ domain.ToolCallEvent) error {
+// HandleToolStartEvent is a no-op for the in-memory store.
+func (r *InMemoryMessageEventHandler) HandleToolStartEvent(_ context.Context, _ domain.ToolStartEvent) error {
 	return nil
 }
 
-// HandleToolCallEnd is a no-op for the in-memory store.
-func (r *InMemoryMessageEventHandler) HandleToolCallEnd(_ context.Context, _ domain.ToolCallEndEvent) error {
+// HandleToolEndEvent is a no-op for the in-memory store.
+func (r *InMemoryMessageEventHandler) HandleToolEndEvent(_ context.Context, _ domain.ToolEndEvent) error {
 	return nil
 }
 
@@ -119,8 +119,8 @@ func (r *InMemoryMessageRepository) HandleMessageEvent(ctx context.Context, even
 	return (&InMemoryMessageEventHandler{r.db}).HandleMessageEvent(ctx, event)
 }
 
-func (r *InMemoryMessageRepository) HandleTurnEvent(ctx context.Context, event domain.TurnEvent) error {
-	return (&InMemoryMessageEventHandler{r.db}).HandleTurnEvent(ctx, event)
+func (r *InMemoryMessageRepository) HandleTurnEvent(ctx context.Context, event domain.TurnEndEvent) error {
+	return (&InMemoryMessageEventHandler{r.db}).HandleTurnEndEvent(ctx, event)
 }
 
 // AllMessages returns a copy of all stored messages for the given session.

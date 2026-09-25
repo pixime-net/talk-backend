@@ -33,49 +33,44 @@ const (
 
 // ConversationManager orchestrates a multi-turn conversation with optional tool calls.
 type ConversationManager struct {
-	llmClient           LlmClient
-	model               Model
-	sessionScope        SessionScope
-	messageEventHandler MessageEventHandler
-	messageRepository   MessageRepository
-	promptProvider      PromptProvider
-	toolsProvider       func() []Tool
-	contextBuilder      *ContextBuilder
-	toolExecutor        *ToolExecutor
-	thinkingEffort      ThinkingEffort
+	llmClient         LlmClient
+	model             Model
+	sessionScope      SessionScope
+	eventHandlers     EventHandlers
+	messageRepository MessageRepository
+	promptProvider    PromptProvider
+	toolsProvider     func() []Tool
+	contextBuilder    *ContextBuilder
+	toolExecutor      *ToolExecutor
+	thinkingEffort    ThinkingEffort
 }
 
 // ConversationManagerConfig groups all parameters for creating a ConversationManager.
 type ConversationManagerConfig struct {
-	Client              LlmClient
-	Model               Model
-	SessionScope        SessionScope
-	MessageEventHandler MessageEventHandler
-	MessageRepository   MessageRepository
-	SessionRepository   SessionRepository
-	PromptProvider      PromptProvider
-	Tools               func() []Tool
-	MaxConcurrentTools  int
-	ContextFullTurns    int
+	Client             LlmClient
+	Model              Model
+	SessionScope       SessionScope
+	EventHandlers      EventHandlers
+	MessageRepository  MessageRepository
+	SessionRepository  SessionRepository
+	PromptProvider     PromptProvider
+	Tools              func() []Tool
+	MaxConcurrentTools int
+	ContextFullTurns   int
 }
 
 // NewConversationManager creates a ConversationManager.
 func NewConversationManager(cfg ConversationManagerConfig) *ConversationManager {
-	messageHandler := cfg.MessageEventHandler
-	if messageHandler == nil {
-		messageHandler = NoOpMessageEventHandler{}
-	}
-
 	return &ConversationManager{
-		sessionScope:        cfg.SessionScope,
-		llmClient:           cfg.Client,
-		model:               cfg.Model,
-		messageEventHandler: messageHandler,
-		messageRepository:   cfg.MessageRepository,
-		promptProvider:      cfg.PromptProvider,
-		toolsProvider:       cfg.Tools,
-		contextBuilder:      NewContextBuilder(cfg.MessageRepository, cfg.SessionRepository, cfg.SessionScope.SessionID(), cfg.ContextFullTurns),
-		toolExecutor:        NewToolExecutor(cfg.Tools, cfg.MaxConcurrentTools, messageHandler),
+		sessionScope:      cfg.SessionScope,
+		llmClient:         cfg.Client,
+		model:             cfg.Model,
+		eventHandlers:     cfg.EventHandlers,
+		messageRepository: cfg.MessageRepository,
+		promptProvider:    cfg.PromptProvider,
+		toolsProvider:     cfg.Tools,
+		contextBuilder:    NewContextBuilder(cfg.MessageRepository, cfg.SessionRepository, cfg.SessionScope.SessionID(), cfg.ContextFullTurns),
+		toolExecutor:      NewToolExecutor(cfg.Tools, cfg.MaxConcurrentTools, &cfg.EventHandlers),
 	}
 }
 
@@ -109,27 +104,34 @@ func (m *ConversationManager) Chat(ctx context.Context, userInput string) (strin
 		return "", fmt.Errorf("%w: %w", ErrSystemPrompt, err)
 	}
 
-	// turnID is used to correlate all messages, API calls, and tool calls for this conversation turn in observability.
-	turnID := GenerateTraceID()
-	// turnSpanID is used to correlate all events for this conversation turn in observability. It is the parent span for all API call spans in this turn.
-	turnSpanID := GenerateSpanID()
-	turnStartedAt := time.Now()
-	model := m.model
+	// tc groups the fields that stay constant for the entire conversation turn.
+	tc := turnContext{
+		// turnID is used to correlate all messages, API calls, and tool calls for this conversation turn in observability.
+		turnID: GenerateTraceID(),
+		// turnSpanID is used to correlate all events for this conversation turn in observability. It is the parent span for all API call spans in this turn.
+		turnSpanID: GenerateSpanID(),
+		// startedAt marks the beginning of this conversation turn for observability and timing purposes.
+		startedAt: time.Now(),
+		// userInput is the message content provided by the user for this conversation turn.
+		userInput: userInput,
+	}
 	// Store the user message in the conversation history before processing to ensure it's included in the context
 	// for the first API call and in observability.
-	if err := m.messageEventHandler.HandleMessageEvent(ctx, MessageEvent{
-		Message:      Message{Role: RoleUser, Content: userInput, TurnID: turnID},
+	if err := m.eventHandlers.HandleMessageEvent(ctx, MessageEvent{
+		Message:      Message{Role: RoleUser, Content: userInput, TurnID: tc.turnID},
 		SessionScope: m.sessionScope,
-		Model:        model,
-		TurnSpanID:   turnSpanID,
+		Model:        m.model,
+		TurnSpanID:   tc.turnSpanID,
 		Kind:         CallKindInitial,
-		StartedAt:    turnStartedAt,
+		StartedAt:    tc.startedAt,
 	}); err != nil {
 		return "", fmt.Errorf("handling user message event: %w", err)
 	}
+	// cumulative usage and tool calls for the entire conversation turn.
 	var totalUsage Usage
-	allToolCalls := make([]ToolCall, 0, 8) // pre-allocate to avoid repeated growth
-	var lastCallEndedAt time.Time
+	// toolCalls keeps track of every tool call made during this conversation turn.
+	toolCalls := make([]ToolCall, 0, 8) // pre-allocate to avoid repeated growth
+
 	callCount := 0
 	// kind tracks whether the API call is the initial LLM call or a subsequent call after tool results, for observability purposes.
 	kind := CallKindInitial
@@ -139,7 +141,7 @@ func (m *ConversationManager) Chat(ctx context.Context, userInput string) (strin
 
 	for range maxToolCalls {
 		// Get the current conversation context for the API call input
-		messages := m.contextBuilder.BuildContextMessages(ctx, turnID)
+		messages := m.contextBuilder.BuildContextMessages(ctx, tc.turnID)
 		conversationInput := formatMessagesAsInput(messages, systemPrompt)
 
 		// Send the conversation to the LLM and get the response with token usage.
@@ -151,21 +153,19 @@ func (m *ConversationManager) Chat(ctx context.Context, userInput string) (strin
 		if err != nil {
 			return "", fmt.Errorf("model completion: %w", err)
 		}
-		lastCallEndedAt = time.Now()
+		var callEndedAt = time.Now()
 
 		totalUsage = totalUsage.Add(usage)
-		allToolCalls = append(allToolCalls, response.ToolCalls...)
+		toolCalls = append(toolCalls, response.ToolCalls...)
 		callCount++
 
-		response.TurnID = turnID
-		if err := m.storeAssistantResponse(ctx, assistantResponse{
+		response.TurnID = tc.turnID
+		if err := m.emitAssistantMessageEvent(ctx, tc, assistantResponse{
 			response:          response,
-			model:             model,
-			turnSpanID:        turnSpanID,
 			kind:              kind,
 			usage:             usage,
-			callStartedAt:     callStartedAt,
-			callEndedAt:       lastCallEndedAt,
+			startedAt:         callStartedAt,
+			endedAt:           callEndedAt,
 			conversationInput: conversationInput,
 		}); err != nil {
 			return "", fmt.Errorf("handling assistant message event: %w", err)
@@ -175,96 +175,75 @@ func (m *ConversationManager) Chat(ctx context.Context, userInput string) (strin
 
 		// If the model responded without tool calls, the turn is complete.
 		if len(response.ToolCalls) == 0 {
-			return m.finishTurn(ctx, TurnEvent{
-				TurnID:       turnID,
-				TurnSpanID:   turnSpanID,
-				StartedAt:    turnStartedAt,
-				EndedAt:      time.Now(),
-				SessionScope: m.sessionScope,
-				Model:        model,
-				TotalUsage:   totalUsage,
-				CallCount:    callCount,
-				Input:        userInput,
-				Output:       response.Content,
-				ToolCalls:    allToolCalls,
-			})
+			return m.emitTurnCompleted(ctx, tc, totalUsage, callCount, toolCalls, response.Content)
 		}
 
-		toolExecutions, err := m.toolExecutor.Execute(ctx, turnID, response.ToolCalls)
+		// The model responded with tool calls, we need to execute them before the next iteration.
+		toolExecutions, err := m.toolExecutor.Execute(ctx, tc.turnID, response.ToolCalls)
 		if err != nil {
 			return "", err
 		}
-		if err := m.storeToolResultEvents(ctx, toolExecutions, model, turnSpanID); err != nil {
+		if err := m.emitToolResultEvents(ctx, tc, toolExecutions); err != nil {
 			return "", err
 		}
 	}
 
 	// Persist the incomplete turn before returning the iteration limit error.
-	if err := m.messageEventHandler.HandleTurnEvent(ctx, TurnEvent{
-		TurnID:       turnID,
-		TurnSpanID:   turnSpanID,
-		StartedAt:    turnStartedAt,
-		EndedAt:      time.Now(),
-		SessionScope: m.sessionScope,
-		Model:        model,
-		TotalUsage:   totalUsage,
-		CallCount:    callCount,
-		Input:        userInput,
-		Output:       "",
-		ToolCalls:    allToolCalls,
-		Status:       TurnStatusIncomplete,
-	}); err != nil {
-		slog.Error("persisting incomplete turn on max iterations", slog.String("turn_id", turnID), slog.String("error", err.Error()))
+	if _, err := m.emitTurnNotCompleted(ctx, tc, totalUsage, callCount, toolCalls); err != nil {
+		slog.Error("persisting incomplete turn on max iterations", slog.String("turn_id", tc.turnID), slog.String("error", err.Error()))
 	}
 
 	return "", ErrMaxToolIterations
 }
 
+// turnContext groups the fields that stay constant for the entire conversation turn.
+type turnContext struct {
+	turnID     string
+	turnSpanID string
+	startedAt  time.Time
+	userInput  string
+}
+
+// assistantResponse groups the fields that vary on each LLM completion call within a turn.
 type assistantResponse struct {
 	response          *Message
-	model             Model
-	turnSpanID        string
 	kind              CallKind
 	usage             Usage
-	callStartedAt     time.Time
-	callEndedAt       time.Time
+	startedAt         time.Time
+	endedAt           time.Time
 	conversationInput string
 }
 
-// storeAssistantResponse stores the assistant message in the conversation history.
+// emitAssistantMessageEvent stores the assistant message in the conversation history.
 // When the model responds with only tool calls (empty text content), it substitutes
 // the content with a human-readable tool-call summary for observability.
-func (m *ConversationManager) storeAssistantResponse(ctx context.Context, response assistantResponse) error {
+func (m *ConversationManager) emitAssistantMessageEvent(ctx context.Context, tc turnContext, response assistantResponse) error {
 	stored := *response.response
 	if strings.TrimSpace(stored.Content) == "" && len(stored.ToolCalls) > 0 {
 		stored.Content = formatToolCallSummary(stored.ToolCalls)
 	}
-	return m.messageEventHandler.HandleMessageEvent(ctx, MessageEvent{
+	return m.eventHandlers.HandleMessageEvent(ctx, MessageEvent{
 		Message:      stored,
 		SessionScope: m.sessionScope,
-		Model:        response.model,
-		TurnSpanID:   response.turnSpanID,
+		Model:        m.model,
+		TurnSpanID:   tc.turnSpanID,
 		Kind:         response.kind,
 		Usage:        response.usage,
-		StartedAt:    response.callStartedAt,
-		EndedAt:      response.callEndedAt,
-		APICall: APICallEvent{
-			StartedAt: response.callStartedAt,
-			EndedAt:   response.callEndedAt,
-			Input:     response.conversationInput,
-			Output:    formatAPICallOutput(response.response.Content, response.response.ToolCalls),
-		},
+		StartedAt:    response.startedAt,
+		EndedAt:      response.endedAt,
+		Input:        response.conversationInput,
+		Output:       formatOutput(response.response.Content, response.response.ToolCalls),
 	})
 }
 
-// storeToolResultEvents stores one message event per tool execution in the conversation history.
-func (m *ConversationManager) storeToolResultEvents(ctx context.Context, executions []ToolExecutionResult, model Model, turnSpanID string) error {
+// emitToolResultEvents stores one message event per tool execution in the conversation history.
+func (m *ConversationManager) emitToolResultEvents(ctx context.Context, tc turnContext, executions []ToolExecutionResult) error {
 	for _, exec := range executions {
-		if err := m.messageEventHandler.HandleMessageEvent(ctx, MessageEvent{
+		if err := m.eventHandlers.HandleMessageEvent(ctx, MessageEvent{
 			Message:      exec.Message,
 			SessionScope: m.sessionScope,
-			Model:        model,
-			TurnSpanID:   turnSpanID,
+			Model:        m.model,
+			TurnSpanID:   tc.turnSpanID,
 			Kind:         CallKindToolResult,
 			StartedAt:    exec.StartedAt,
 			EndedAt:      exec.EndedAt,
@@ -275,12 +254,39 @@ func (m *ConversationManager) storeToolResultEvents(ctx context.Context, executi
 	return nil
 }
 
-// finishTurn emits the final turn event and returns the assistant's response content.
-func (m *ConversationManager) finishTurn(ctx context.Context, event TurnEvent) (string, error) {
-	if err := m.messageEventHandler.HandleTurnEvent(ctx, event); err != nil {
+// emitTurnCompleted emits the final turn event and returns the assistant's response content.
+func (m *ConversationManager) emitTurnCompleted(ctx context.Context, tc turnContext, totalUsage Usage, callCount int, toolCalls []ToolCall, output string) (string, error) {
+	event := m.buildTurnEndEvent(tc, totalUsage, callCount, toolCalls, output, TurnStatusComplete)
+	if err := m.eventHandlers.HandleTurnEndEvent(ctx, event); err != nil {
 		return "", fmt.Errorf("handling turn event: %w", err)
 	}
 	return event.Output, nil
+}
+
+// emitTurnNotCompleted emits the turn event for a turn interrupted by the max tool call iteration limit.
+func (m *ConversationManager) emitTurnNotCompleted(ctx context.Context, tc turnContext, totalUsage Usage, callCount int, toolCalls []ToolCall) (string, error) {
+	event := m.buildTurnEndEvent(tc, totalUsage, callCount, toolCalls, "", TurnStatusIncomplete)
+	if err := m.eventHandlers.HandleTurnEndEvent(ctx, event); err != nil {
+		return "", fmt.Errorf("handling turn not completed event: %w", err)
+	}
+	return event.Output, nil
+}
+
+func (m *ConversationManager) buildTurnEndEvent(tc turnContext, totalUsage Usage, callCount int, toolCalls []ToolCall, output, status string) TurnEndEvent {
+	return TurnEndEvent{
+		TurnID:       tc.turnID,
+		TurnSpanID:   tc.turnSpanID,
+		StartedAt:    tc.startedAt,
+		EndedAt:      time.Now(),
+		SessionScope: m.sessionScope,
+		Model:        m.model,
+		TotalUsage:   totalUsage,
+		CallCount:    callCount,
+		Input:        tc.userInput,
+		Output:       output,
+		ToolCalls:    toolCalls,
+		Status:       status,
+	}
 }
 
 // formatMessagesAsInput formats the conversation messages as a readable input string for observability
@@ -332,10 +338,10 @@ func findLastUserContent(messages []Message) string {
 	return ""
 }
 
-// formatAPICallOutput returns a human-readable output for an API call.
+// formatOutput returns a human-readable output for an API call.
 // When the LLM responds with tool calls instead of text, the content is empty;
 // in that case we format the tool calls as JSON so Langfuse shows a meaningful output.
-func formatAPICallOutput(content string, toolCalls []ToolCall) string {
+func formatOutput(content string, toolCalls []ToolCall) string {
 	if content != "" {
 		return content
 	}

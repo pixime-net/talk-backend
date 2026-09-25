@@ -75,9 +75,9 @@ func TestLangfuseUsageReporter_HandleTurnEvent_BufferFullDrops(t *testing.T) {
 	}
 
 	// Fill buffer first.
-	r.eventBuffer <- traceEvent{eventType: "turn_event", data: domain.TurnEvent{}}
+	r.eventBuffer <- traceEvent{eventType: "turn_event", data: domain.TurnEndEvent{}}
 
-	if err := r.HandleTurnEvent(context.Background(), domain.TurnEvent{}); err != nil {
+	if err := r.HandleTurnEndEvent(context.Background(), domain.TurnEndEvent{}); err != nil {
 		t.Fatalf("HandleTurnEvent unexpected error: %v", err)
 	}
 
@@ -88,10 +88,10 @@ func TestLangfuseUsageReporter_HandleTurnEvent_BufferFullDrops(t *testing.T) {
 
 func TestLangfuseUsageReporter_HandleToolCalls_NoOp(t *testing.T) {
 	r := &LangfuseUsageReporter{}
-	if err := r.HandleToolCallStart(context.Background(), domain.ToolCallEvent{}); err != nil {
+	if err := r.HandleToolStartEvent(context.Background(), domain.ToolStartEvent{}); err != nil {
 		t.Fatalf("HandleToolCallStart unexpected error: %v", err)
 	}
-	if err := r.HandleToolCallEnd(context.Background(), domain.ToolCallEndEvent{}); err != nil {
+	if err := r.HandleToolEndEvent(context.Background(), domain.ToolEndEvent{}); err != nil {
 		t.Fatalf("HandleToolCallEnd unexpected error: %v", err)
 	}
 }
@@ -184,12 +184,10 @@ func TestLangfuseUsageReporter_OTLPConversions(t *testing.T) {
 				TurnID:    domain.GenerateTraceID(),
 				ToolCalls: []domain.ToolCall{{ID: "tc-1", Name: "weather", Input: map[string]any{"city": "Paris"}}},
 			},
-			Model: domain.Model{OTLPProvider: domain.OTLPProviderAnthropic, APIModelID: "claude-sonnet-4-5"},
-			Kind:  domain.CallKindInitial,
-			APICall: domain.APICallEvent{
-				Input:  "hello",
-				Output: "world",
-			},
+			Model:      domain.Model{OTLPProvider: domain.OTLPProviderAnthropic, APIModelID: "claude-sonnet-4-5"},
+			Kind:       domain.CallKindInitial,
+			Input:      "hello",
+			Output:     "world",
 			Usage:      domain.Usage{InputTokens: 10, OutputTokens: 20},
 			StartedAt:  now.Add(-2 * time.Second),
 			EndedAt:    now,
@@ -229,7 +227,7 @@ func TestLangfuseUsageReporter_OTLPConversions(t *testing.T) {
 
 	// --- conversationTurnToOTLP ---
 
-	baseTurn := domain.TurnEvent{
+	baseTurn := domain.TurnEndEvent{
 		TurnID:       domain.GenerateTraceID(),
 		TurnSpanID:   domain.GenerateSpanID(),
 		StartedAt:    now.Add(-4 * time.Second),

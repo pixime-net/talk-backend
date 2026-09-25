@@ -98,7 +98,7 @@ func runServe(ctx context.Context, port, systemFile string) error {
 	defer mcpManager.Close()
 
 	// add eventHandlers : storeEventHandler, console & langfuse
-	var eventHandlers []domain.MessageEventHandler
+	var eventHandlers []domain.EventHandler
 	eventHandlers = append(eventHandlers, storeEventHandler)
 	if cfg.ConsoleUsageReporter {
 		eventHandlers = append(eventHandlers, &observability.ConsoleUsageReporter{})
@@ -214,7 +214,7 @@ type buildChatFuncParams struct {
 	cfg               *config.Config
 	router            *router.Router
 	promptProvider    domain.PromptProvider
-	handlers          []domain.MessageEventHandler
+	handlers          []domain.EventHandler
 	messageRepository domain.MessageRepository
 	sessionRepository domain.SessionRepository
 	mcpManager        *mcp.Manager
@@ -240,22 +240,24 @@ func buildChatFunc(params buildChatFuncParams) agui.ChatFunc {
 		}
 
 		aguiEmitter := agui.NewAGUIEmitter(opts.SSEWriter, params.log)
-		handlers := domain.NewMessageEventHandlers([][]domain.MessageEventHandler{
-			append([]domain.MessageEventHandler{aguiEmitter}, params.handlers...),
+
+		// handlers will be executed concurrently in one phase
+		handlers := domain.NewEventHandlers([][]domain.EventHandler{
+			append([]domain.EventHandler{aguiEmitter}, params.handlers...),
 		})
 
 		scope := domain.NewSessionScope(threadID, "anonymous")
 		manager := domain.NewConversationManager(domain.ConversationManagerConfig{
-			Client:              client,
-			Model:               model,
-			SessionScope:        scope,
-			MessageRepository:   params.messageRepository,
-			SessionRepository:   params.sessionRepository,
-			PromptProvider:      params.promptProvider,
-			Tools:               params.mcpManager.Tools,
-			MessageEventHandler: handlers,
-			MaxConcurrentTools:  params.cfg.ToolsMaxConcurrent,
-			ContextFullTurns:    params.cfg.ContextFullTurns,
+			Client:             client,
+			Model:              model,
+			SessionScope:       scope,
+			MessageRepository:  params.messageRepository,
+			SessionRepository:  params.sessionRepository,
+			PromptProvider:     params.promptProvider,
+			Tools:              params.mcpManager.Tools,
+			EventHandlers:      handlers,
+			MaxConcurrentTools: params.cfg.ToolsMaxConcurrent,
+			ContextFullTurns:   params.cfg.ContextFullTurns,
 		})
 
 		userInput := extractUserInput(aguiMessages)

@@ -349,26 +349,26 @@ func TestToolExecutor_JSONMarshalError(t *testing.T) {
 
 type recordingToolCallHandler struct {
 	mu        sync.Mutex
-	events    []ToolCallEvent
-	endEvents []ToolCallEndEvent
+	events    []ToolStartEvent
+	endEvents []ToolEndEvent
 }
 
 func (h *recordingToolCallHandler) HandleMessageEvent(_ context.Context, _ MessageEvent) error {
 	return nil
 }
 
-func (h *recordingToolCallHandler) HandleTurnEvent(_ context.Context, _ TurnEvent) error {
+func (h *recordingToolCallHandler) HandleTurnEndEvent(_ context.Context, _ TurnEndEvent) error {
 	return nil
 }
 
-func (h *recordingToolCallHandler) HandleToolCallStart(_ context.Context, event ToolCallEvent) error {
+func (h *recordingToolCallHandler) HandleToolStartEvent(_ context.Context, event ToolStartEvent) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.events = append(h.events, event)
 	return nil
 }
 
-func (h *recordingToolCallHandler) HandleToolCallEnd(_ context.Context, event ToolCallEndEvent) error {
+func (h *recordingToolCallHandler) HandleToolEndEvent(_ context.Context, event ToolEndEvent) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.endEvents = append(h.endEvents, event)
@@ -459,7 +459,7 @@ func TestToolExecutor_EmitToolCallEvent_Parallel(t *testing.T) {
 	}
 
 	// Verify each end event has valid timing and matching tool call ID.
-	endByID := make(map[string]ToolCallEndEvent)
+	endByID := make(map[string]ToolEndEvent)
 	for _, e := range handler.endEvents {
 		endByID[e.ToolCall.ID] = e
 	}

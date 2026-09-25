@@ -23,7 +23,7 @@ func TestAGUIEmitter_HandleToolCallStart(t *testing.T) {
 
 	emitter := NewAGUIEmitter(sse, nil)
 
-	event := domain.ToolCallEvent{
+	event := domain.ToolStartEvent{
 		TurnID: "turn-1",
 		ToolCall: domain.ToolCall{
 			ID:    "call-123",
@@ -32,7 +32,7 @@ func TestAGUIEmitter_HandleToolCallStart(t *testing.T) {
 		},
 	}
 
-	if err := emitter.HandleToolCallStart(context.Background(), event); err != nil {
+	if err := emitter.HandleToolStartEvent(context.Background(), event); err != nil {
 		t.Fatalf("HandleToolCallStart error: %v", err)
 	}
 
@@ -81,7 +81,7 @@ func TestAGUIEmitter_HandleToolCallEnd(t *testing.T) {
 
 	emitter := NewAGUIEmitter(sse, nil)
 
-	event := domain.ToolCallEndEvent{
+	event := domain.ToolEndEvent{
 		TurnID: "turn-1",
 		ToolCall: domain.ToolCall{
 			ID:   "call-456",
@@ -90,7 +90,7 @@ func TestAGUIEmitter_HandleToolCallEnd(t *testing.T) {
 		Result: domain.ToolResult{ToolCallID: "call-456", Content: "sunny"},
 	}
 
-	if err := emitter.HandleToolCallEnd(context.Background(), event); err != nil {
+	if err := emitter.HandleToolEndEvent(context.Background(), event); err != nil {
 		t.Fatalf("HandleToolCallEnd error: %v", err)
 	}
 
@@ -226,12 +226,12 @@ func TestAGUIEmitter_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	event := domain.ToolCallEvent{
+	event := domain.ToolStartEvent{
 		TurnID:   "turn-1",
 		ToolCall: domain.ToolCall{ID: "call-789", Name: "tool"},
 	}
 
-	if err := emitter.HandleToolCallStart(ctx, event); err != nil {
+	if err := emitter.HandleToolStartEvent(ctx, event); err != nil {
 		t.Fatalf("expected nil error on cancelled context, got: %v", err)
 	}
 
@@ -544,13 +544,13 @@ func TestAGUIEmitter_HandleTurnEvent_EmitsUsageForEveryStatus(t *testing.T) {
 				t.Fatalf("creating SSEWriter: %v", err)
 			}
 			emitter := NewAGUIEmitter(sse, nil)
-			event := domain.TurnEvent{
+			event := domain.TurnEndEvent{
 				Model:      domain.Model{Name: "gpt-5.4"},
 				TotalUsage: domain.Usage{InputTokens: 250, OutputTokens: 50, CacheWriteTokens: 4},
 				Status:     status,
 			}
 
-			if err := emitter.HandleTurnEvent(context.Background(), event); err != nil {
+			if err := emitter.HandleTurnEndEvent(context.Background(), event); err != nil {
 				t.Fatalf("HandleTurnEvent error: %v", err)
 			}
 
@@ -678,11 +678,11 @@ func (s *usageTestStore) HandleMessageEvent(_ context.Context, event domain.Mess
 	return nil
 }
 
-func (*usageTestStore) HandleTurnEvent(context.Context, domain.TurnEvent) error { return nil }
-func (*usageTestStore) HandleToolCallStart(context.Context, domain.ToolCallEvent) error {
+func (*usageTestStore) HandleTurnEndEvent(context.Context, domain.TurnEndEvent) error { return nil }
+func (*usageTestStore) HandleToolStartEvent(context.Context, domain.ToolStartEvent) error {
 	return nil
 }
-func (*usageTestStore) HandleToolCallEnd(context.Context, domain.ToolCallEndEvent) error {
+func (*usageTestStore) HandleToolEndEvent(context.Context, domain.ToolEndEvent) error {
 	return nil
 }
 func (s *usageTestStore) AllMessages(_ context.Context, sessionID string) ([]domain.Message, error) {
@@ -733,18 +733,18 @@ func newUsageTestConversationManager(
 	}
 	store := &usageTestStore{}
 	emitter := NewAGUIEmitter(sse, nil)
-	handlers := domain.NewMessageEventHandlers([][]domain.MessageEventHandler{{store}, {emitter}})
+	eventHandlers := domain.NewEventHandlers([][]domain.EventHandler{{store}, {emitter}})
 	return domain.NewConversationManager(domain.ConversationManagerConfig{
-		Client:              &usageTestClient{responses: responses, usages: usages},
-		Model:               domain.Model{Name: "test-model", ContextWindowTokens: 100, ProviderMaxOutputTokens: 50},
-		SessionScope:        domain.NewSessionScope("test-session", "anonymous"),
-		MessageRepository:   store,
-		SessionRepository:   store,
-		PromptProvider:      usageTestPromptProvider{},
-		Tools:               func() []domain.Tool { return []domain.Tool{usageTestTool{}} },
-		MessageEventHandler: handlers,
-		MaxConcurrentTools:  1,
-		ContextFullTurns:    -1,
+		Client:             &usageTestClient{responses: responses, usages: usages},
+		Model:              domain.Model{Name: "test-model", ContextWindowTokens: 100, ProviderMaxOutputTokens: 50},
+		SessionScope:       domain.NewSessionScope("test-session", "anonymous"),
+		MessageRepository:  store,
+		SessionRepository:  store,
+		PromptProvider:     usageTestPromptProvider{},
+		Tools:              func() []domain.Tool { return []domain.Tool{usageTestTool{}} },
+		EventHandlers:      eventHandlers,
+		MaxConcurrentTools: 1,
+		ContextFullTurns:   -1,
 	})
 }
 

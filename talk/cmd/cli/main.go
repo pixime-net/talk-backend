@@ -98,22 +98,22 @@ func run(ctx context.Context, modelAlias, systemFile string, pprofEnabled bool) 
 	mcpManager.ConnectAll(ctx)
 	defer mcpManager.Close()
 
-	handlers := domain.NewMessageEventHandlers([][]domain.MessageEventHandler{
+	handlers := domain.NewEventHandlers([][]domain.EventHandler{
 		{storeEventHandler},
 		buildReporters(cfg),
 	})
 
 	manager := domain.NewConversationManager(domain.ConversationManagerConfig{
-		Client:              client,
-		Model:               modelDescriptor,
-		SessionScope:        scope,
-		MessageRepository:   messages,
-		SessionRepository:   browser,
-		PromptProvider:      promptProvider,
-		Tools:               mcpManager.Tools,
-		MessageEventHandler: handlers,
-		MaxConcurrentTools:  cfg.ToolsMaxConcurrent,
-		ContextFullTurns:    cfg.ContextFullTurns,
+		Client:             client,
+		Model:              modelDescriptor,
+		SessionScope:       scope,
+		MessageRepository:  messages,
+		SessionRepository:  browser,
+		PromptProvider:     promptProvider,
+		Tools:              mcpManager.Tools,
+		EventHandlers:      handlers,
+		MaxConcurrentTools: cfg.ToolsMaxConcurrent,
+		ContextFullTurns:   cfg.ContextFullTurns,
 	})
 
 	goPromptReader, err := NewGoPromptReader(historyFilePath())
@@ -138,8 +138,8 @@ func run(ctx context.Context, modelAlias, systemFile string, pprofEnabled bool) 
 	return app.runSession(ctx)
 }
 
-func buildReporters(cfg *config.Config) []domain.MessageEventHandler {
-	var reporters []domain.MessageEventHandler
+func buildReporters(cfg *config.Config) []domain.EventHandler {
+	var reporters []domain.EventHandler
 	if cfg.ConsoleUsageReporter {
 		reporters = append(reporters, &observability.ConsoleUsageReporter{})
 	}

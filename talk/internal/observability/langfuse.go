@@ -40,7 +40,7 @@ type LangfuseConfig struct {
 	BaseURL   string
 }
 
-var _ domain.MessageEventHandler = (*LangfuseUsageReporter)(nil) // compile-time interface check
+var _ domain.EventHandler = (*LangfuseUsageReporter)(nil) // compile-time interface check
 
 // NewLangfuseUsageReporter creates a new Langfuse usage reporter.
 // It starts a background worker to process events asynchronously.
@@ -93,8 +93,8 @@ func (l *LangfuseUsageReporter) HandleMessageEvent(_ context.Context, messageEve
 	return nil
 }
 
-// HandleTurnEvent buffers one completed turn event.
-func (l *LangfuseUsageReporter) HandleTurnEvent(_ context.Context, event domain.TurnEvent) error {
+// HandleTurnEndEvent buffers one completed turn event.
+func (l *LangfuseUsageReporter) HandleTurnEndEvent(_ context.Context, event domain.TurnEndEvent) error {
 	select {
 	case l.eventBuffer <- traceEvent{eventType: "turn_event", data: event}:
 	case <-l.done:
@@ -106,13 +106,13 @@ func (l *LangfuseUsageReporter) HandleTurnEvent(_ context.Context, event domain.
 	return nil
 }
 
-// HandleToolCallStart is a no-op for the Langfuse reporter.
-func (l *LangfuseUsageReporter) HandleToolCallStart(_ context.Context, _ domain.ToolCallEvent) error {
+// HandleToolStartEvent is a no-op for the Langfuse reporter.
+func (l *LangfuseUsageReporter) HandleToolStartEvent(_ context.Context, _ domain.ToolStartEvent) error {
 	return nil
 }
 
-// HandleToolCallEnd is a no-op for the Langfuse reporter.
-func (l *LangfuseUsageReporter) HandleToolCallEnd(_ context.Context, _ domain.ToolCallEndEvent) error {
+// HandleToolEndEvent is a no-op for the Langfuse reporter.
+func (l *LangfuseUsageReporter) HandleToolEndEvent(_ context.Context, _ domain.ToolEndEvent) error {
 	return nil
 }
 
@@ -145,7 +145,7 @@ func (l *LangfuseUsageReporter) processEvent(event traceEvent) error {
 		}
 		otlpTrace, err = l.apiCallToOTLP(messageEvent)
 	case "turn_event":
-		turnEvent, ok := event.data.(domain.TurnEvent)
+		turnEvent, ok := event.data.(domain.TurnEndEvent)
 		if !ok {
 			return fmt.Errorf("invalid turn event data")
 		}

@@ -16,7 +16,7 @@ const (
 	turnUsageEventName  = "turn_usage"
 )
 
-var _ domain.MessageEventHandler = (*AGUIEmitter)(nil)
+var _ domain.EventHandler = (*AGUIEmitter)(nil)
 
 // AGUIEmitter emits all AG-UI content events (text messages and tool calls)
 // to an SSE stream. It implements domain.MessageEventHandler.
@@ -52,22 +52,22 @@ func (e *AGUIEmitter) HandleMessageEvent(ctx context.Context, event domain.Messa
 	return nil
 }
 
-// HandleTurnEvent emits the authoritative token total for a completed turn.
-func (e *AGUIEmitter) HandleTurnEvent(ctx context.Context, event domain.TurnEvent) error {
+// HandleTurnEndEvent emits the authoritative token total for a completed turn.
+func (e *AGUIEmitter) HandleTurnEndEvent(ctx context.Context, event domain.TurnEndEvent) error {
 	e.emitCustomEvent(ctx, turnUsageEventName, NewTurnUsagePayload(event.Model, event.TotalUsage))
 	return nil
 }
 
-// HandleToolCallStart emits TOOL_CALL_START and TOOL_CALL_ARGS events before tool execution.
-func (e *AGUIEmitter) HandleToolCallStart(ctx context.Context, event domain.ToolCallEvent) error {
+// HandleToolStartEvent emits TOOL_CALL_START and TOOL_CALL_ARGS events before tool execution.
+func (e *AGUIEmitter) HandleToolStartEvent(ctx context.Context, event domain.ToolStartEvent) error {
 	_ = e.writeEvent(ctx, events.NewToolCallStartEvent(event.ToolCall.ID, event.ToolCall.Name))
 	argsJSON, _ := json.Marshal(event.ToolCall.Input)
 	_ = e.writeEvent(ctx, events.NewToolCallArgsEvent(event.ToolCall.ID, string(argsJSON)))
 	return nil
 }
 
-// HandleToolCallEnd emits TOOL_CALL_END then TOOL_CALL_RESULT with the tool output.
-func (e *AGUIEmitter) HandleToolCallEnd(ctx context.Context, event domain.ToolCallEndEvent) error {
+// HandleToolEndEvent emits TOOL_CALL_END then TOOL_CALL_RESULT with the tool output.
+func (e *AGUIEmitter) HandleToolEndEvent(ctx context.Context, event domain.ToolEndEvent) error {
 	_ = e.writeEvent(ctx, events.NewToolCallEndEvent(event.ToolCall.ID))
 	_ = e.writeEvent(ctx, events.NewToolCallResultEvent(uuid.New().String(), event.ToolCall.ID, event.Result.ClientPayload()))
 	return nil
