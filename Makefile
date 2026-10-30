@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-MODULES := talk-libs talk mcp-playground mcp-owm mcp-ign-nav
+MODULES := talk-libs talk mcp-playground mcp-owm mcp-ign-nav mcp-searxng
 
 .PHONY: all test cover vet lint clean help $(MODULES)
 
@@ -71,6 +71,7 @@ build: ## Build all binaries
 	@$(MAKE) -C talk build
 	@$(MAKE) -C mcp-owm build
 	@$(MAKE) -C mcp-ign-nav build
+	@$(MAKE) -C mcp-searxng build
 	@$(MAKE) -C mcp-playground build
 
 clean: ## Remove build artifacts from all modules
