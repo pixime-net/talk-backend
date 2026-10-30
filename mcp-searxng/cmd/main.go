@@ -25,10 +25,19 @@ func main() {
 
 // buildApp creates the MCP server application from the given configuration.
 func buildApp(env *config.ServerEnv) *mcpserver.App {
+	scrape := tools.NewScrapeTool(env.ScrapeMaxChars)
+	if env.ScrapeRenderURL != "" {
+		scrape = scrape.WithRenderer(
+			tools.NewCDPRenderer(env.ScrapeRenderURL, env.ScrapeRenderToken, env.ScrapeRenderTimeout),
+			env.ScrapeRenderMode,
+			env.ScrapeRenderConcurrency,
+		)
+	}
+
 	opts := []mcpserver.Option{
 		mcpserver.WithTools(
 			mcpserver.RegisterTool(tools.NewSearchTool(env.SearxngURL, env.SearchMaxResults)),
-			mcpserver.RegisterTool(tools.NewScrapeTool(env.ScrapeMaxChars)),
+			mcpserver.RegisterTool(scrape),
 		),
 		mcpserver.WithBaseEnvHTTPSecurity(env.BaseEnv),
 	}

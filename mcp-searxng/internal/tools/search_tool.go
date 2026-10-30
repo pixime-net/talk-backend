@@ -38,17 +38,41 @@ type SearchToolOutput struct {
 
 // SearchResult is a SearXNG main result (searx/result_types MainResult).
 type SearchResult struct {
-	URL           string  `json:"url,omitempty" description:"Result URL"`
-	Title         string  `json:"title,omitempty" description:"Result title"`
-	Content       string  `json:"content,omitempty" description:"Snippet or description of the result"`
-	Engine        string  `json:"engine,omitempty" description:"Engine that produced the result"`
-	Score         float64 `json:"score,omitempty" description:"Ranking score computed by SearXNG"`
-	PublishedDate string  `json:"publishedDate,omitempty" description:"Publication date in ISO 8601 format"`
-	Author        string  `json:"author,omitempty" description:"Author of the content"`
-	Views         string  `json:"views,omitempty" description:"Humanized view count"`
-	Metadata      string  `json:"metadata,omitempty" description:"Miscellaneous metadata"`
+	URL           string         `json:"url,omitempty" description:"Result URL"`
+	Title         string         `json:"title,omitempty" description:"Result title"`
+	Content       string         `json:"content,omitempty" description:"Snippet or description of the result"`
+	Engine        string         `json:"engine,omitempty" description:"Engine that produced the result"`
+	Score         float64        `json:"score,omitempty" description:"Ranking score computed by SearXNG"`
+	PublishedDate string         `json:"publishedDate,omitempty" description:"Publication date in ISO 8601 format"`
+	Author        string         `json:"author,omitempty" description:"Author of the content"`
+	Views         StringOrNumber `json:"views,omitempty" description:"Humanized view count"`
+	Metadata      string         `json:"metadata,omitempty" description:"Miscellaneous metadata"`
 	// Length is a number of seconds for typed results, but legacy engines may emit a string.
 	Length any `json:"length,omitempty" description:"Playing duration (seconds)"`
+}
+
+// StringOrNumber accepts a JSON string or number and renders it as a string.
+// SearXNG engines disagree on the type of display-only fields such as views.
+type StringOrNumber string
+
+// UnmarshalJSON accepts strings, numbers and null; anything else decodes to "".
+func (s *StringOrNumber) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*s = ""
+		return nil
+	}
+	var str string
+	if err := json.Unmarshal(data, &str); err == nil {
+		*s = StringOrNumber(str)
+		return nil
+	}
+	var num json.Number
+	if err := json.Unmarshal(data, &num); err == nil {
+		*s = StringOrNumber(num.String())
+		return nil
+	}
+	*s = ""
+	return nil
 }
 
 // SearchAnswer is a SearXNG direct answer (searx/result_types/answer.py).

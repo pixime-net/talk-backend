@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLoadServerEnv_Success(t *testing.T) {
@@ -164,11 +165,110 @@ func TestLoadServerEnv_ScrapeMaxCharsInvalid(t *testing.T) {
 	}
 }
 
+func TestLoadServerEnv_ScrapeRenderDefaults(t *testing.T) {
+	clearEnv(t)
+
+	env, err := LoadServerEnv()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if env.ScrapeRenderURL != "" {
+		t.Errorf("expected empty ScrapeRenderURL, got %q", env.ScrapeRenderURL)
+	}
+	if env.ScrapeRenderToken != "" {
+		t.Errorf("expected empty ScrapeRenderToken, got %q", env.ScrapeRenderToken)
+	}
+	if env.ScrapeRenderMode != RenderOff {
+		t.Errorf("expected RenderOff, got %q", env.ScrapeRenderMode)
+	}
+	if env.ScrapeRenderTimeout != DefaultScrapeRenderTimeout {
+		t.Errorf("expected timeout %s, got %s", DefaultScrapeRenderTimeout, env.ScrapeRenderTimeout)
+	}
+	if env.ScrapeRenderConcurrency != DefaultScrapeRenderConcurrency {
+		t.Errorf("expected concurrency %d, got %d", DefaultScrapeRenderConcurrency, env.ScrapeRenderConcurrency)
+	}
+}
+
+func TestLoadServerEnv_ScrapeRenderFromEnv(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("SCRAPE_RENDER_URL", "ws://browser:3000")
+	t.Setenv("BROWSERLESS_TOKEN", " secret ")
+	t.Setenv("SCRAPE_RENDER_MODE", " Fallback ")
+	t.Setenv("SCRAPE_RENDER_TIMEOUT", "45s")
+	t.Setenv("SCRAPE_RENDER_CONCURRENCY", "3")
+
+	env, err := LoadServerEnv()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if env.ScrapeRenderURL != "ws://browser:3000" {
+		t.Errorf("unexpected ScrapeRenderURL %q", env.ScrapeRenderURL)
+	}
+	if env.ScrapeRenderToken != "secret" {
+		t.Errorf("expected ScrapeRenderToken %q, got %q", "secret", env.ScrapeRenderToken)
+	}
+	if env.ScrapeRenderMode != RenderFallback {
+		t.Errorf("expected RenderFallback, got %q", env.ScrapeRenderMode)
+	}
+	if env.ScrapeRenderTimeout != 45*time.Second {
+		t.Errorf("expected 45s, got %s", env.ScrapeRenderTimeout)
+	}
+	if env.ScrapeRenderConcurrency != 3 {
+		t.Errorf("expected concurrency 3, got %d", env.ScrapeRenderConcurrency)
+	}
+}
+
+func TestLoadServerEnv_ScrapeRenderDefaultsToFallbackWhenURLSet(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("SCRAPE_RENDER_URL", "ws://browser:3000")
+
+	env, err := LoadServerEnv()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if env.ScrapeRenderMode != RenderFallback {
+		t.Errorf("expected RenderFallback when URL is set, got %q", env.ScrapeRenderMode)
+	}
+}
+
+func TestLoadServerEnv_ScrapeRenderInvalid(t *testing.T) {
+	tests := map[string]string{
+		"bad url scheme":   "http://browser:3000",
+		"bad url":          "not a url",
+		"bad mode":         "sometimes",
+		"bad timeout":      "soon",
+		"zero timeout":     "0s",
+		"bad concurrency":  "0",
+		"mode without url": "always",
+	}
+	for name, value := range tests {
+		t.Run(name, func(t *testing.T) {
+			clearEnv(t)
+			switch name {
+			case "bad url scheme", "bad url":
+				t.Setenv("SCRAPE_RENDER_URL", value)
+			case "bad mode", "mode without url":
+				t.Setenv("SCRAPE_RENDER_MODE", value)
+			case "bad timeout", "zero timeout":
+				t.Setenv("SCRAPE_RENDER_TIMEOUT", value)
+			case "bad concurrency":
+				t.Setenv("SCRAPE_RENDER_CONCURRENCY", value)
+			}
+
+			if _, err := LoadServerEnv(); err == nil {
+				t.Fatalf("expected error for %s (%q)", name, value)
+			}
+		})
+	}
+}
+
 // clearEnv unsets all environment variables read by LoadServerEnv.
 func clearEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{
 		"SEARXNG_URL", "SEARCH_MAX_RESULTS", "SCRAPE_MAX_CHARS",
+		"SCRAPE_RENDER_URL", "SCRAPE_RENDER_MODE", "SCRAPE_RENDER_TIMEOUT",
+		"SCRAPE_RENDER_CONCURRENCY", "BROWSERLESS_TOKEN",
 		"X_API_KEY", "BASE_URL",
 		"OAUTH_AUTHORIZATION_SERVER", "OAUTH_AUDIENCE",
 		"OAUTH_SCOPES", "OAUTH_CLIENT_SECRET",

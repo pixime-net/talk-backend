@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/pixime-net/mcp-searxng/internal/config"
 )
 
 const scrapeSamplePage = `<!DOCTYPE html>
@@ -433,6 +435,160 @@ func TestScrapeTool_Call_BlocksRedirectToInternalAddress(t *testing.T) {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// fakeRenderer is a PageRenderer that returns canned content and counts calls.
+type fakeRenderer struct {
+	finalURL string
+	html     string
+	err      error
+	calls    int
+}
+
+func (f *fakeRenderer) Render(_ context.Context, _ *url.URL) (string, string, string, error) {
+	f.calls++
+	return f.finalURL, "", f.html, f.err
+}
+
+func TestScrapeTool_Call_RenderFallbackOnJSShell(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<html><body><div id="app"></div><script src="/app.js"></script></body></html>`))
+	}))
+	defer srv.Close()
+
+	r := &fakeRenderer{
+		finalURL: srv.URL + "/rendered",
+		html:     `<html><head><title>Rendered</title></head><body><h1>Contenu rendu</h1></body></html>`,
+	}
+	tool := newTestScrapeTool(srv)
+	tool.checkHost = nil
+	tool.WithRenderer(r, config.RenderFallback, 1)
+
+	out, err := tool.Call(context.Background(), ScrapeToolInput{URL: srv.URL})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if r.calls != 1 {
+		t.Errorf("expected renderer to be called once, got %d", r.calls)
+	}
+	if out.URL != srv.URL+"/rendered" {
+		t.Errorf("expected rendered url, got %q", out.URL)
+	}
+	if out.Title != "Rendered" || !strings.Contains(out.Content, "Contenu rendu") {
+		t.Errorf("unexpected output: %+v", out)
+	}
+}
+
+func TestScrapeTool_Call_NoRenderWhenContentIsRich(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<html><body><main><p>` + strings.Repeat("contenu serveur ", 40) + `</p></main></body></html>`))
+	}))
+	defer srv.Close()
+
+	r := &fakeRenderer{html: `<html><body><p>rendu</p></body></html>`}
+	tool := newTestScrapeTool(srv)
+	tool.checkHost = nil
+	tool.WithRenderer(r, config.RenderFallback, 1)
+
+	out, err := tool.Call(context.Background(), ScrapeToolInput{URL: srv.URL})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if r.calls != 0 {
+		t.Errorf("expected renderer not to be called, got %d calls", r.calls)
+	}
+	if !strings.Contains(out.Content, "contenu serveur") {
+		t.Errorf("expected HTTP content, got %q", out.Content)
+	}
+}
+
+func TestScrapeTool_Call_RenderAlwaysSkipsHTTP(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("HTTP fetch must not happen in always mode")
+	}))
+	defer srv.Close()
+
+	r := &fakeRenderer{
+		finalURL: srv.URL,
+		html:     `<html><head><title>Toujours</title></head><body><p>Rendu toujours</p></body></html>`,
+	}
+	tool := newTestScrapeTool(srv)
+	tool.checkHost = nil
+	tool.WithRenderer(r, config.RenderAlways, 1)
+
+	out, err := tool.Call(context.Background(), ScrapeToolInput{URL: srv.URL})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if r.calls != 1 || !strings.Contains(out.Content, "Rendu toujours") {
+		t.Errorf("unexpected output: %+v (calls=%d)", out, r.calls)
+	}
+}
+
+func TestScrapeTool_Call_RenderErrorKeepsHTTPResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<html><body><p>repli serveur</p><div id="app"></div></body></html>`))
+	}))
+	defer srv.Close()
+
+	r := &fakeRenderer{err: errors.New("browser down")}
+	tool := newTestScrapeTool(srv)
+	tool.checkHost = nil
+	tool.WithRenderer(r, config.RenderFallback, 1)
+
+	out, err := tool.Call(context.Background(), ScrapeToolInput{URL: srv.URL})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if r.calls != 1 {
+		t.Errorf("expected one render attempt, got %d", r.calls)
+	}
+	if !strings.Contains(out.Content, "repli serveur") {
+		t.Errorf("expected HTTP fallback content, got %q", out.Content)
+	}
+}
+
+func TestScrapeTool_Call_RenderErrorInAlwaysMode(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("HTTP fetch must not happen in always mode")
+	}))
+	defer srv.Close()
+
+	r := &fakeRenderer{err: errors.New("browser down")}
+	tool := newTestScrapeTool(srv)
+	tool.checkHost = nil
+	tool.WithRenderer(r, config.RenderAlways, 1)
+
+	if _, err := tool.Call(context.Background(), ScrapeToolInput{URL: srv.URL}); err == nil {
+		t.Fatal("expected error when renderer fails in always mode")
+	}
+}
+
+func TestScrapeTool_WithRendererOffDisablesRenderer(t *testing.T) {
+	tool := newScrapeToolWithClient(testScrapeMaxChars, &http.Client{})
+	tool.WithRenderer(&fakeRenderer{}, config.RenderOff, 1)
+	if tool.renderer != nil {
+		t.Error("expected renderer to be disabled for RenderOff")
+	}
+}
+
+func TestCheckPublicHost(t *testing.T) {
+	ctx := context.Background()
+	for _, raw := range []string{"http://8.8.8.8/", "http://[2606:4700::1111]/"} {
+		u, _ := url.Parse(raw)
+		if err := checkPublicHost(ctx, u); err != nil {
+			t.Errorf("expected %s to be allowed, got %v", raw, err)
+		}
+	}
+	for _, raw := range []string{"http://127.0.0.1/", "http://10.0.0.1/", "http://[::1]/"} {
+		u, _ := url.Parse(raw)
+		if err := checkPublicHost(ctx, u); !errors.Is(err, errBlockedAddress) {
+			t.Errorf("expected %s to be blocked, got %v", raw, err)
+		}
+	}
+}
 
 func TestIsPublicAddr(t *testing.T) {
 	tests := map[string]bool{

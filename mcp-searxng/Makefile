@@ -9,8 +9,9 @@ DOCKER_IMAGE := $(APP_NAME)
 DEV_SEARXNG_IMAGE     := $(APP_NAME)-dev-searxng
 DEV_SEARXNG_CONTAINER := $(APP_NAME)-dev-searxng
 DEV_SEARXNG_PORT      ?= 8888
+DEV_COMPOSE_FILE      := docker-compose.dev.yml
 
-.PHONY: all build run dev test test-integration cover vet lint clean dockerize docker-run searxng-dev searxng-dev-stop help
+.PHONY: all build run dev test test-integration cover vet lint clean dockerize docker-run searxng-dev searxng-dev-stop dev-infra dev-infra-stop help
 
 COLOR_RESET  = \033[0m
 COLOR_BOLD   = \033[1m
@@ -75,6 +76,13 @@ searxng-dev: ## Start a local SearXNG for development on DEV_SEARXNG_PORT (defau
 
 searxng-dev-stop: ## Stop the local development SearXNG
 	docker stop $(DEV_SEARXNG_CONTAINER)
+
+dev-infra: ## Start the development stack (SearXNG + headless browser)
+	docker compose -f $(DEV_COMPOSE_FILE) up -d --build
+	@$(ECHO) "$(COLOR_GREEN)$(CHECK) SearXNG on http://localhost:8888, browser on ws://localhost:3000 (token: BROWSERLESS_TOKEN, default dev-token)$(COLOR_RESET)"
+
+dev-infra-stop: ## Stop the development stack
+	docker compose -f $(DEV_COMPOSE_FILE) down
 
 clean: ## Remove build artifacts
 	rm -rf bin coverage.out
