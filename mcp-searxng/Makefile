@@ -1,0 +1,70 @@
+SHELL := /bin/sh
+
+APP_NAME     := mcp-searxng
+BINARY       := bin/$(APP_NAME)
+CMD          := ./cmd
+VERSION      := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+LDFLAGS      := -ldflags "-X github.com/pixime-net/talk-backend/talk-libs/version.Version=$(VERSION)"
+DOCKER_IMAGE := $(APP_NAME)
+
+.PHONY: all build run dev test test-integration cover vet lint clean dockerize help
+
+COLOR_RESET  = \033[0m
+COLOR_BOLD   = \033[1m
+COLOR_GREEN  = \033[32m
+COLOR_YELLOW = \033[33m
+COLOR_BLUE   = \033[34m
+CHECK        = [ok]
+
+ECHO = printf '%b\n'
+
+.DEFAULT_GOAL := help
+
+all: vet test build ## Run vet, test and build
+
+build: ## Build the binary
+	@$(ECHO) "$(COLOR_YELLOW)Building $(APP_NAME)...$(COLOR_RESET)"
+	go build $(LDFLAGS) -o $(BINARY) $(CMD)
+	@$(ECHO) "$(COLOR_GREEN)$(CHECK) Build successful: $(BINARY)$(COLOR_RESET)"
+
+run: ## Run the server (TRANSPORT=http; address from HTTP_HOST/HTTP_PORT)
+	go run $(LDFLAGS) $(CMD) --transport $(or $(TRANSPORT),http)
+
+dev: ## Run the server with hot reload (air) in http mode
+	air
+
+test: ## Run tests
+	@$(ECHO) "$(COLOR_YELLOW)Running tests...$(COLOR_RESET)"
+	go test ./...
+	@$(ECHO) "$(COLOR_GREEN)$(CHECK) Tests passed$(COLOR_RESET)"
+
+test-integration: ## Run integration tests against a SearXNG container (requires Docker)
+	@$(ECHO) "$(COLOR_YELLOW)Running integration tests...$(COLOR_RESET)"
+	go test -tags integration -run Integration -count=1 ./...
+	@$(ECHO) "$(COLOR_GREEN)$(CHECK) Integration tests passed$(COLOR_RESET)"
+
+cover: ## Run tests with coverage
+	@$(ECHO) "$(COLOR_YELLOW)Running tests with coverage...$(COLOR_RESET)"
+	go test -coverprofile=coverage.out ./...
+	go tool cover -func=coverage.out
+	@$(ECHO) "$(COLOR_GREEN)$(CHECK) Coverage done$(COLOR_RESET)"
+
+vet: ## Run go vet
+	go vet ./...
+
+lint: ## Run golangci-lint
+	@$(ECHO) "$(COLOR_YELLOW)Running linter...$(COLOR_RESET)"
+	golangci-lint run ./...
+	@$(ECHO) "$(COLOR_GREEN)$(CHECK) Lint passed$(COLOR_RESET)"
+
+dockerize: ## Build the Docker image
+	@$(ECHO) "$(COLOR_YELLOW)Building Docker image $(DOCKER_IMAGE)...$(COLOR_RESET)"
+	docker build -t $(DOCKER_IMAGE) -f Dockerfile ..
+	@$(ECHO) "$(COLOR_GREEN)$(CHECK) Docker image built: $(DOCKER_IMAGE)$(COLOR_RESET)"
+
+clean: ## Remove build artifacts
+	rm -rf bin coverage.out
+
+help: ## Show help
+	@$(ECHO) "$(COLOR_BOLD)mcp-searxng$(COLOR_RESET)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(COLOR_BLUE)%-20s$(COLOR_RESET) %s\n", $$1, $$2}'

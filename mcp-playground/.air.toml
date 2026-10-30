@@ -2,8 +2,8 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-cmd = "go build -o ./tmp/mcp-playground.exe ./cmd"
-bin = "./tmp/mcp-playground.exe"
+cmd = "go build -o ./tmp/mcp-searxng.exe ./cmd"
+bin = "./tmp/mcp-searxng.exe"
 args_bin = ["--transport", "http"]
 include_ext = ["go", "toml", "env"]
 include_dir = ["cmd", "internal"]

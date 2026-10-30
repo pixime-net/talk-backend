@@ -1,0 +1,22 @@
+# SearXNG settings for integration tests only.
+# Every default engine is dropped and replaced by the offline demo engine, so
+# tests never reach the internet and results are deterministic.
+use_default_settings:
+  engines:
+    keep_only: []
+
+server:
+  secret_key: "integration-tests-only-not-a-secret"
+  limiter: false
+  public_instance: false
+
+search:
+  formats:
+    - html
+    - json
+
+engines:
+  - name: demo offline
+    engine: demo_offline
+    shortcut: demo
+    disabled: false
