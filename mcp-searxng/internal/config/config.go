@@ -32,7 +32,7 @@ type ServerEnv struct {
 func LoadServerEnv(envFiles ...string) (*ServerEnv, error) {
 	_ = godotenv.Load(envFiles...)
 
-	SearxngURL := "http://localhost:9000"
+	SearxngURL := "http://localhost:8888"
 	if v := os.Getenv("SEARXNG_URL"); v != "" {
 		SearxngURL = v
 	}

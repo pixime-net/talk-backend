@@ -6,8 +6,11 @@ CMD          := ./cmd
 VERSION      := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS      := -ldflags "-X github.com/pixime-net/talk-libs/version.Version=$(VERSION)"
 DOCKER_IMAGE := $(APP_NAME)
+DEV_SEARXNG_IMAGE     := $(APP_NAME)-dev-searxng
+DEV_SEARXNG_CONTAINER := $(APP_NAME)-dev-searxng
+DEV_SEARXNG_PORT      ?= 8888
 
-.PHONY: all build run dev test test-integration cover vet lint clean dockerize docker-run help
+.PHONY: all build run dev test test-integration cover vet lint clean dockerize docker-run searxng-dev searxng-dev-stop help
 
 COLOR_RESET  = \033[0m
 COLOR_BOLD   = \033[1m
@@ -64,6 +67,14 @@ dockerize: ## Build the Docker image (mcp-searxng + embedded SearXNG)
 
 docker-run: ## Run the image locally with SearXNG also reachable on :8888 (debug only)
 	docker run --rm -p 8080:8080 -p 8888:8888 -e SEARXNG_BIND_ADDRESS=0.0.0.0 $(DOCKER_IMAGE)
+
+searxng-dev: ## Start a local SearXNG for development on DEV_SEARXNG_PORT (default 8888; not for production)
+	docker build -t $(DEV_SEARXNG_IMAGE) -f Dockerfile.dev .
+	docker run -d --rm --name $(DEV_SEARXNG_CONTAINER) -p 127.0.0.1:$(DEV_SEARXNG_PORT):8888 $(DEV_SEARXNG_IMAGE)
+	@$(ECHO) "$(COLOR_GREEN)$(CHECK) SearXNG running on http://localhost:$(DEV_SEARXNG_PORT)$(COLOR_RESET)"
+
+searxng-dev-stop: ## Stop the local development SearXNG
+	docker stop $(DEV_SEARXNG_CONTAINER)
 
 clean: ## Remove build artifacts
 	rm -rf bin coverage.out

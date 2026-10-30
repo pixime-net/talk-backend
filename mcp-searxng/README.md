@@ -52,7 +52,7 @@ Copy [.env.example](.env.example) to `.env` for local development.
 
 | Variable                     | Default                  | Description                                                                  |
 |------------------------------|--------------------------|------------------------------------------------------------------------------|
-| `SEARXNG_URL`                | `http://localhost:9000`  | SearXNG base URL (in Docker: derived from `SEARXNG_PORT`)                    |
+| `SEARXNG_URL`                | `http://localhost:8888`  | SearXNG base URL (in Docker: derived from `SEARXNG_PORT`)                    |
 | `SEARCH_MAX_RESULTS`         | `10`                     | Number of results returned by `search`                                       |
 | `SCRAPE_MAX_CHARS`           | `8000`                   | Characters returned per `scrape` call (upper bound of `max_chars`)           |
 | `LOG_LEVEL`                  | `INFO`                   | Log level (`DEBUG`, `INFO`, `WARN`, `ERROR`)                                 |
@@ -117,6 +117,30 @@ SearXNG settings are in [docker/settings.yml](docker/settings.yml) (JSON format 
 
 ## Development
 
+### Local SearXNG (development only)
+
+[Dockerfile.dev](Dockerfile.dev) builds a **standalone SearXNG instance for local development only**: it lets you run mcp-searxng from your machine (`make run`, `make dev`, debugger) against a real SearXNG. It is **not** meant to be deployed — use [Dockerfile](Dockerfile) (MCP server + embedded SearXNG) in production.
+
+- SearXNG listens on port `8888`, the default `SEARXNG_URL` of mcp-searxng (`http://localhost:8888`): no configuration needed.
+- Same SearXNG settings as production ([docker/settings.yml](docker/settings.yml)), web UI available at http://localhost:8888.
+- Published on `127.0.0.1` only, no authentication, secret key generated at each start by [docker/searxng-dev-entrypoint.sh](docker/searxng-dev-entrypoint.sh) (unless `SEARXNG_SECRET` is set).
+
+```bash
+make searxng-dev        # build and start SearXNG on http://localhost:8888
+make dev                # run mcp-searxng against it
+make searxng-dev-stop   # stop it (the container is removed)
+```
+
+If port 8888 is already taken on your machine, pick another one and point mcp-searxng to it:
+
+```bash
+make searxng-dev DEV_SEARXNG_PORT=19000
+SEARXNG_URL=http://localhost:19000 make dev   # or set SEARXNG_URL in .env
+make searxng-dev-stop
+```
+
+### Commands
+
 ```bash
 make test               # Run unit tests
 make test-integration   # Run integration tests (SearXNG via testcontainers, needs Docker)
@@ -124,8 +148,6 @@ make vet                # Run go vet
 make cover              # Run tests with coverage
 make dev                # Hot reload with air
 ```
-
-For local development, run a SearXNG instance with JSON format enabled and point `SEARXNG_URL` to it.
 
 ## Authentication
 

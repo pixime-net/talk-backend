@@ -1,0 +1,23 @@
+# syntax=docker/dockerfile:1
+# LOCAL DEVELOPMENT ONLY: standalone SearXNG instance for running mcp-searxng
+# from the host (make run / make dev). Listens on port 8888, the default
+# SEARXNG_URL of mcp-searxng. Do not deploy: use ./Dockerfile in production.
+#   docker build -f Dockerfile.dev -t mcp-searxng-dev-searxng .
+#   docker run --rm -p 8888:8888 mcp-searxng-dev-searxng
+
+ARG SEARXNG_IMAGE=docker.io/searxng/searxng:2026.10.28-c360868e5
+
+FROM ${SEARXNG_IMAGE}
+
+COPY --chmod=0444 docker/settings.yml /etc/searxng/settings.yml
+COPY --chmod=0755 docker/searxng-dev-entrypoint.sh /usr/local/bin/searxng-dev-entrypoint.sh
+
+USER searxng
+
+ENV SEARXNG_PORT=8888
+EXPOSE 8888
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD ["python3", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ['SEARXNG_PORT'], timeout=3)"]
+
+ENTRYPOINT ["/usr/local/bin/searxng-dev-entrypoint.sh"]
