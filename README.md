@@ -11,7 +11,7 @@ A Go monorepo for LLM-powered applications: a multi-provider interactive CLI, an
 
 ## Modules
 
-The project uses **Go workspaces** (`go.work`) with five independent modules:
+The project uses **Go workspaces** (`go.work`) with six independent modules:
 
 | Module | Path | Description |
 |--------|------|-------------|
@@ -19,6 +19,7 @@ The project uses **Go workspaces** (`go.work`) with five independent modules:
 | `talk` | [`./talk`](talk/README.md) | Interactive CLI + AG-UI HTTP server — multi-turn conversations with LLM providers |
 | `mcp-owm` | [`./mcp-owm`](mcp-owm/README.md) | MCP server exposing [OpenWeatherMap](https://openweathermap.org/) weather data |
 | `mcp-ign-nav` | [`./mcp-ign-nav`](mcp-ign-nav/README.md) | MCP server for French geographic tools (IGN Géoplateforme) |
+| `mcp-searxng` | [`./mcp-searxng`](mcp-searxng/README.md) | MCP server for web search and page scraping, backed by an embedded [SearXNG](https://docs.searxng.org/) instance |
 | `mcp-playground` | [`./mcp-playground`](mcp-playground/README.md) | Minimal MCP server template for experimentation |
 
 ```
@@ -27,6 +28,7 @@ go.work (root)
 ├── talk/             CLI (REPL) + AG-UI HTTP server
 ├── mcp-owm/          MCP server: OpenWeatherMap weather & air quality data
 ├── mcp-ign-nav/      MCP server: IGN geocoding, routing, distance/time
+├── mcp-searxng/      MCP server: web search (SearXNG) & page scraping to markdown
 └── mcp-playground/   MCP server: template / reference implementation
 ```
 
@@ -98,6 +100,17 @@ cp .env.example .env   # public API, no key needed
 make dev
 ```
 
+#### SearXNG (web search & scrape)
+
+```bash
+cd mcp-searxng
+cp .env.example .env
+make searxng-dev       # local SearXNG on localhost:8888 (development only)
+make dev               # MCP server on localhost:8080
+```
+
+In production, the [mcp-searxng Docker image](mcp-searxng/README.md#build--run-with-docker) embeds SearXNG and only exposes the authenticated MCP port.
+
 #### Playground (template)
 
 ```bash
@@ -145,7 +158,7 @@ All MCP servers share a common framework via `talk-libs/mcpserver`:
 - X-API-Key and OAuth 2.0 authentication (direct or proxy mode for Auth0 / Keycloak)
 - HTTP security hardening: rate limiting, path filtering, security headers, timeouts
 - Prompts support
-- Docker images
+- Docker images (`mcp-searxng` bundles its own SearXNG instance, kept internal to the container)
 
 ### Observability
 
@@ -159,8 +172,8 @@ All MCP servers share a common framework via `talk-libs/mcpserver`:
 
 | Target | Description |
 |--------|-------------|
-| `make build` | Build `talk`, `mcp-owm`, `mcp-playground` binaries |
-| `make test` | Run tests for all modules |
+| `make build` | Build `talk` and all MCP server binaries |
+| `make test` | Run unit tests for all modules |
 | `make cover` | Run tests with coverage for all modules |
 | `make cover-html` | Generate HTML coverage reports for all modules |
 | `make vet` | Run `go vet` for all modules |
@@ -245,7 +258,13 @@ graph TD
     subgraph mcp["MCP Servers"]
         OWM["mcp-owm\nOpenWeatherMap"]
         IGN["mcp-ign-nav\nIGN Géoplateforme"]
+        SXNG["mcp-searxng\nweb search · scrape"]
         PLAY["mcp-playground\ntemplate"]
+    end
+
+    subgraph web["Web"]
+        SEARXNG["SearXNG\nembedded, internal"]
+        PAGES["Public web pages"]
     end
 
     subgraph obs["Observability"]
@@ -266,12 +285,16 @@ graph TD
     DC --> MCP_MGR
     MCP_MGR -->|HTTP / stdio| OWM
     MCP_MGR -->|HTTP / stdio| IGN
+    MCP_MGR -->|HTTP / stdio| SXNG
     MCP_MGR -->|HTTP / stdio| PLAY
+    SXNG -->|search| SEARXNG
+    SXNG -->|scrape| PAGES
     DC --> EVENTS
     EVENTS --> LF
     EVENTS --> CON
     OWM -.->|built with| LIBS
     IGN -.->|built with| LIBS
+    SXNG -.->|built with| LIBS
     PLAY -.->|built with| LIBS
 ```
 

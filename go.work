@@ -4,6 +4,7 @@ use (
 	./mcp-ign-nav
 	./mcp-owm
 	./mcp-playground
+	./mcp-searxng
 	./talk
 	./talk-libs
 )

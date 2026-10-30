@@ -1,0 +1,31 @@
+# SearXNG settings bundled in the mcp-searxng Docker image.
+# SearXNG is only meant to be called by mcp-searxng (loopback), never directly
+# by end users. server.secret_key comes from SEARXNG_SECRET (generated at
+# container start when unset) and must not be written here.
+# Reference: https://docs.searxng.org/admin/settings/
+use_default_settings: true
+
+general:
+  instance_name: "mcp-searxng"
+
+server:
+  # The bot-detection limiter needs Valkey and only makes sense for public
+  # instances; access control is done by mcp-searxng authentication.
+  limiter: false
+  public_instance: false
+  image_proxy: false
+  method: "GET"
+
+search:
+  safe_search: 0
+  # json is required by mcp-searxng; html is kept for manual debugging.
+  formats:
+    - html
+    - json
+
+# Tor engines need a Tor proxy and fail to load (error log at every start).
+engines:
+  - name: ahmia
+    inactive: true
+  - name: torch
+    inactive: true
