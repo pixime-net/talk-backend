@@ -4,10 +4,10 @@ APP_NAME     := mcp-searxng
 BINARY       := bin/$(APP_NAME)
 CMD          := ./cmd
 VERSION      := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-LDFLAGS      := -ldflags "-X github.com/pixime-net/talk-backend/talk-libs/version.Version=$(VERSION)"
+LDFLAGS      := -ldflags "-X github.com/pixime-net/talk-libs/version.Version=$(VERSION)"
 DOCKER_IMAGE := $(APP_NAME)
 
-.PHONY: all build run dev test test-integration cover vet lint clean dockerize help
+.PHONY: all build run dev test test-integration cover vet lint clean dockerize docker-run help
 
 COLOR_RESET  = \033[0m
 COLOR_BOLD   = \033[1m
@@ -57,10 +57,13 @@ lint: ## Run golangci-lint
 	golangci-lint run ./...
 	@$(ECHO) "$(COLOR_GREEN)$(CHECK) Lint passed$(COLOR_RESET)"
 
-dockerize: ## Build the Docker image
+dockerize: ## Build the Docker image (mcp-searxng + embedded SearXNG)
 	@$(ECHO) "$(COLOR_YELLOW)Building Docker image $(DOCKER_IMAGE)...$(COLOR_RESET)"
-	docker build -t $(DOCKER_IMAGE) -f Dockerfile ..
+	docker build -t $(DOCKER_IMAGE) --build-arg VERSION=$(VERSION) -f Dockerfile ..
 	@$(ECHO) "$(COLOR_GREEN)$(CHECK) Docker image built: $(DOCKER_IMAGE)$(COLOR_RESET)"
+
+docker-run: ## Run the image locally with SearXNG also reachable on :8888 (debug only)
+	docker run --rm -p 8080:8080 -p 8888:8888 -e SEARXNG_BIND_ADDRESS=0.0.0.0 $(DOCKER_IMAGE)
 
 clean: ## Remove build artifacts
 	rm -rf bin coverage.out
