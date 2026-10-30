@@ -62,7 +62,7 @@ lint: ## Run golangci-lint
 
 dockerize: ## Build the Docker image (mcp-searxng + embedded SearXNG)
 	@$(ECHO) "$(COLOR_YELLOW)Building Docker image $(DOCKER_IMAGE)...$(COLOR_RESET)"
-	docker build -t $(DOCKER_IMAGE) --build-arg VERSION=$(VERSION) -f Dockerfile ..
+	docker build -t $(DOCKER_IMAGE) -f Dockerfile ..
 	@$(ECHO) "$(COLOR_GREEN)$(CHECK) Docker image built: $(DOCKER_IMAGE)$(COLOR_RESET)"
 
 docker-run: ## Run the image locally with SearXNG also reachable on :8888 (debug only)

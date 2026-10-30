@@ -83,7 +83,7 @@ Docker image only (embedded SearXNG):
 The image is built from the `talk-backend` root (it needs `talk-libs`):
 
 ```bash
-make dockerize                     # = docker build -f Dockerfile .. --build-arg VERSION=...
+make dockerize                     # = docker build -f Dockerfile ..  (version from git describe)
 ```
 
 It runs two processes, supervised by [docker/entrypoint.sh](docker/entrypoint.sh): if one stops, the other is stopped and the container exits with a non-zero status (so restart policies apply). A `HEALTHCHECK` probes both SearXNG (`/healthz`) and the MCP port.

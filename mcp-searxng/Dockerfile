@@ -1,24 +1,28 @@
 # syntax=docker/dockerfile:1
 # Self-contained image: mcp-searxng + the SearXNG instance it queries.
 # Build from the talk-backend root (see `make dockerize`):
-#   docker build -f mcp-searxng/Dockerfile --build-arg VERSION=1.2.3 -t mcp-searxng .
+#   docker build -f mcp-searxng/Dockerfile -t mcp-searxng .
+# The version is derived from git (git describe), like the other MCP servers.
 
 ARG SEARXNG_IMAGE=docker.io/searxng/searxng:2026.10.28-c360868e5
 
 FROM golang:1.25-alpine AS builder
 
+RUN apk add --no-cache git
+
 WORKDIR /src
+COPY .git/ ./.git/
 COPY talk-libs/ ./talk-libs/
 COPY mcp-searxng/ ./mcp-searxng/
 
 WORKDIR /src/mcp-searxng
 
-ARG VERSION=dev
 ENV GOWORK=off \
     CGO_ENABLED=0
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
+    VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev") && \
     go build -trimpath -buildvcs=false \
         -ldflags "-s -w -X github.com/pixime-net/talk-libs/version.Version=${VERSION}" \
         -o /out/mcp-searxng \
