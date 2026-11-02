@@ -214,6 +214,11 @@ make searxng-dev-stop
 
 ### Commands
 
+The GitHub Actions [CI workflow](../.github/workflows/ci.yml) runs `go vet`,
+unit tests with the race detector and coverage, and `golangci-lint` for this module.
+Coverage is uploaded to Codecov and included in the SonarCloud analysis.
+Integration tests remain opt-in via `make test-integration` and are not run by this workflow.
+
 ```bash
 make test               # Run unit tests
 make test-integration   # Run integration tests (SearXNG via testcontainers, needs Docker)
