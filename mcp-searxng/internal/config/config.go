@@ -13,8 +13,6 @@ import (
 	"github.com/pixime-net/talk-libs/mcpserver"
 )
 
-const defaultRateLimitPerMinute = 60
-
 // DefaultSearchMaxResults is used when SEARCH_MAX_RESULTS is not set.
 const DefaultSearchMaxResults = 10
 
