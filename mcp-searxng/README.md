@@ -61,7 +61,7 @@ Copy [.env.example](.env.example) to `.env` for local development.
 | `SCRAPE_MAX_CHARS`           | `8000`                   | Characters returned per `scrape` call (upper bound of `max_chars`)           |
 | `SCRAPE_RENDER_URL`          | —                        | CDP WebSocket endpoint of the headless browser (empty = rendering disabled)  |
 | `BROWSERLESS_TOKEN`          | —                        | Token appended to `SCRAPE_RENDER_URL` as `?token=...`                         |
-| `SCRAPE_RENDER_MODE`         | `off`                    | `off`, `fallback` (JS-only pages) or `always`                                |
+| `SCRAPE_RENDER_MODE`         | `fallback` if render URL is set, otherwise `off` | `off`, `fallback` (HTTP Markdown under 200 characters) or `always`; see below |
 | `SCRAPE_RENDER_TIMEOUT`      | `20s`                    | Timeout of a single render                                                   |
 | `SCRAPE_RENDER_CONCURRENCY`  | `1`                      | Maximum simultaneous renders                                                 |
 | `LOG_LEVEL`                  | `INFO`                   | Log level (`DEBUG`, `INFO`, `WARN`, `ERROR`)                                 |
@@ -86,6 +86,31 @@ Docker image only (embedded SearXNG):
 | `SEARXNG_PORT`         | `8888`       | Port of the embedded SearXNG                                                        |
 | `SEARXNG_BIND_ADDRESS` | `127.0.0.1`  | SearXNG bind address. Keep loopback in production; `0.0.0.0` for debugging only     |
 | `SEARXNG_SECRET`       | random       | SearXNG secret key, generated at each start when unset                              |
+
+### Choosing a scrape render mode
+
+`SCRAPE_RENDER_MODE` accepts `off`, `fallback` or `always` (case-insensitive).
+`none` is not accepted and causes a configuration error.
+
+| Mode | Fetch strategy | Error behavior |
+|------|----------------|----------------|
+| `off` | Plain HTTP only, even if `SCRAPE_RENDER_URL` is set. | HTTP/extraction errors are returned. |
+| `fallback` | Fetch over HTTP first. Use the browser only when the full converted Markdown content has **fewer than 200 characters**, before pagination. | HTTP/extraction errors are returned without trying the browser. If rendering fails, its error is ignored and the original HTTP content is returned. |
+| `always` | Use the browser directly, skipping the plain HTTP fetch. | Rendering errors are returned; there is no plain HTTP retry. |
+
+The `fallback` check is a **length heuristic, not JavaScript detection**:
+
+- An empty single-page application shell triggers rendering, but so can a short static page.
+- A page with **200 or more characters** of HTTP Markdown never triggers rendering, even if JavaScript is needed to load its useful content.
+- HTTP errors such as **403**, network timeouts and extraction errors do not trigger rendering.
+
+Choose `fallback` to avoid browser work on pages that already provide enough content over HTTP.
+Choose `always` to execute JavaScript on every page rather than relying on this heuristic.
+Choose `off` when no browser rendering is wanted.
+
+Both `fallback` and `always` require a non-empty `SCRAPE_RENDER_URL`; otherwise startup fails.
+When the mode is unset or blank, it defaults to `fallback` if the URL is set, or `off` otherwise.
+The supplied [.env.example](.env.example) explicitly sets a local browser URL and `always`, overriding that automatic default.
 
 ## Build & Run with Docker
 
@@ -157,6 +182,9 @@ BROWSERLESS_TOKEN=dev-token
 SCRAPE_RENDER_URL=ws://localhost:3000
 SCRAPE_RENDER_MODE=fallback
 ```
+
+This example uses selective rendering. Use `SCRAPE_RENDER_MODE=always` instead to render every page,
+as in [.env.example](.env.example); use `off` for plain HTTP only.
 
 `BROWSERLESS_TOKEN` is appended to the URL automatically (default `dev-token`). An explicit `?token=...` in `SCRAPE_RENDER_URL` takes precedence.
 
