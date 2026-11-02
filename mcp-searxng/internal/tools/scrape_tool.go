@@ -22,6 +22,7 @@ import (
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/charset"
 
+	"github.com/pixime-net/mcp-searxng/internal/config"
 	"github.com/pixime-net/talk-libs/mcpserver"
 )
 
@@ -31,7 +32,16 @@ const (
 	// maxScrapeBodyBytes bounds the page size read into memory.
 	maxScrapeBodyBytes = 5 << 20
 	maxScrapeRedirects = 5
+	// jsOnlyThreshold is the size under which a rendered HTTP page is
+	// considered an empty JavaScript shell worth rendering in a browser.
+	jsOnlyThreshold = 200
 )
+
+// PageRenderer turns a URL into the HTML of the fully rendered page. It is
+// implemented by the headless browser client and faked in tests.
+type PageRenderer interface {
+	Render(ctx context.Context, target *url.URL) (finalURL, title, html string, err error)
+}
 
 // noiseTags are page-chrome and media elements that carry no content useful
 // to a text model; images are dropped because their URLs are token-expensive.
@@ -70,11 +80,16 @@ type ScrapeToolOutput struct {
 	NextIndex  int    `json:"next_index,omitempty" description:"Present when more content is available: pass it as start_index to read the next part"`
 }
 
-// ScrapeTool fetches a web page and converts it to markdown.
+// ScrapeTool fetches a web page and converts it to markdown. It can optionally
+// render JavaScript-heavy pages with a headless browser.
 type ScrapeTool struct {
-	client   *http.Client
-	conv     *converter.Converter
-	maxChars int
+	client     *http.Client
+	conv       *converter.Converter
+	maxChars   int
+	renderer   PageRenderer
+	renderMode config.RenderMode
+	renderSem  chan struct{}
+	checkHost  func(context.Context, *url.URL) error
 }
 
 var _ mcpserver.MCPTool[ScrapeToolInput, ScrapeToolOutput] = (*ScrapeTool)(nil)
@@ -119,7 +134,31 @@ func newScrapeToolWithClient(maxChars int, client *http.Client) *ScrapeTool {
 	for _, tag := range noiseTags {
 		conv.Register.TagType(tag, converter.TagTypeRemove, converter.PriorityStandard)
 	}
-	return &ScrapeTool{client: client, conv: conv, maxChars: maxChars}
+	return &ScrapeTool{
+		client:     client,
+		conv:       conv,
+		maxChars:   maxChars,
+		renderMode: config.RenderOff,
+		checkHost:  checkPublicHost,
+	}
+}
+
+// WithRenderer enables the headless renderer for JavaScript-heavy pages.
+// A nil renderer or RenderOff keeps the tool on the plain HTTP path. The
+// concurrency value caps the number of simultaneous renders.
+func (t *ScrapeTool) WithRenderer(r PageRenderer, mode config.RenderMode, concurrency int) *ScrapeTool {
+	if r == nil || mode == "" || mode == config.RenderOff {
+		t.renderer = nil
+		t.renderMode = config.RenderOff
+		return t
+	}
+	if concurrency < 1 {
+		concurrency = 1
+	}
+	t.renderer = r
+	t.renderMode = mode
+	t.renderSem = make(chan struct{}, concurrency)
+	return t
 }
 
 // charLimit returns the number of characters to keep for a request.
@@ -147,6 +186,21 @@ func (t *ScrapeTool) Call(ctx context.Context, input ScrapeToolInput) (ScrapeToo
 		return ScrapeToolOutput{}, err
 	}
 
+	page, err := t.load(ctx, target)
+	if err != nil {
+		return ScrapeToolOutput{}, err
+	}
+	return paginate(page, input.StartIndex, t.charLimit(input.MaxChars))
+}
+
+// load returns the whole page. It uses the headless renderer when configured
+// to always render, or as a fallback when the HTTP fetch returns a JS-only
+// shell; otherwise it uses the plain HTTP fetch.
+func (t *ScrapeTool) load(ctx context.Context, target *url.URL) (ScrapeToolOutput, error) {
+	if t.renderMode == config.RenderAlways && t.renderer != nil {
+		return t.render(ctx, target)
+	}
+
 	resp, err := t.fetch(ctx, target)
 	if err != nil {
 		return ScrapeToolOutput{}, err
@@ -157,7 +211,70 @@ func (t *ScrapeTool) Call(ctx context.Context, input ScrapeToolInput) (ScrapeToo
 	if err != nil {
 		return ScrapeToolOutput{}, err
 	}
-	return paginate(page, input.StartIndex, t.charLimit(input.MaxChars))
+
+	if t.renderMode == config.RenderFallback && t.renderer != nil && isJSOnly(page) {
+		// On renderer failure, keep the HTTP result rather than failing the call.
+		if rendered, renderErr := t.render(ctx, target); renderErr == nil {
+			return rendered, nil
+		}
+	}
+	return page, nil
+}
+
+// isJSOnly reports whether the HTTP result looks like an empty JavaScript
+// shell, i.e. a page whose content is injected client-side.
+func isJSOnly(page ScrapeToolOutput) bool {
+	return utf8.RuneCountInString(page.Content) < jsOnlyThreshold
+}
+
+// render fetches the page through the headless browser and converts the
+// resulting DOM to markdown, reusing the HTTP conversion pipeline.
+func (t *ScrapeTool) render(ctx context.Context, target *url.URL) (ScrapeToolOutput, error) {
+	if t.checkHost != nil {
+		if err := t.checkHost(ctx, target); err != nil {
+			return ScrapeToolOutput{}, err
+		}
+	}
+
+	select {
+	case t.renderSem <- struct{}{}:
+		defer func() { <-t.renderSem }()
+	case <-ctx.Done():
+		return ScrapeToolOutput{}, ctx.Err()
+	}
+
+	finalURL, _, doc, err := t.renderer.Render(ctx, target)
+	if err != nil {
+		return ScrapeToolOutput{}, fmt.Errorf("rendering %s: %w", target, err)
+	}
+	if finalURL == "" {
+		finalURL = target.String()
+	}
+	title, content, err := t.htmlToMarkdown(ctx, strings.NewReader(doc), finalURL)
+	if err != nil {
+		return ScrapeToolOutput{}, err
+	}
+	return ScrapeToolOutput{URL: finalURL, Title: title, Content: content}, nil
+}
+
+// checkPublicHost resolves the target host and rejects non-public addresses.
+// It is a best-effort guard for the renderer: unlike the HTTP transport hook,
+// it cannot see the browser's own sub-requests, so the renderer must also be
+// isolated at the network level.
+func checkPublicHost(ctx context.Context, target *url.URL) error {
+	addrs, err := net.DefaultResolver.LookupNetIP(ctx, "ip", target.Hostname())
+	if err != nil {
+		return fmt.Errorf("resolving %s: %w", target.Hostname(), err)
+	}
+	if len(addrs) == 0 {
+		return fmt.Errorf("resolving %s: no address", target.Hostname())
+	}
+	for _, addr := range addrs {
+		if !isPublicAddr(addr.Unmap()) {
+			return errBlockedAddress
+		}
+	}
+	return nil
 }
 
 // fetch performs the GET request and returns a successful (2xx) response.

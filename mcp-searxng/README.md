@@ -26,6 +26,8 @@ Search the web through SearXNG and return the results in SearXNG JSON format.
 
 Fetch a public web page and return its main content as markdown (scripts, styles, navigation, images… are removed). Long pages are paginated.
 
+JavaScript-heavy pages (single-page apps) can be rendered with an optional headless browser over CDP (browserless, Playwright server, Chrome with `--remote-debugging-port`). Rendering is **disabled by default**; see `SCRAPE_RENDER_*` below.
+
 **Input:**
 
 | Field         | Type    | Required | Description                                                                |
@@ -46,6 +48,8 @@ Fetch a public web page and return its main content as markdown (scripts, styles
 
 Only public addresses can be scraped: loopback, private, link-local… addresses are rejected, including after redirects (SSRF protection — the embedded SearXNG cannot be reached through this tool).
 
+When rendering is enabled, the browser makes its own requests, so the HTTP-level guard above cannot inspect them. The target host is still resolved and checked before each render, but the headless browser must also be isolated at the network level (see the production compose file).
+
 ## Environment variables
 
 Copy [.env.example](.env.example) to `.env` for local development.
@@ -55,6 +59,11 @@ Copy [.env.example](.env.example) to `.env` for local development.
 | `SEARXNG_URL`                | `http://localhost:8888`  | SearXNG base URL (in Docker: derived from `SEARXNG_PORT`)                    |
 | `SEARCH_MAX_RESULTS`         | `10`                     | Number of results returned by `search`                                       |
 | `SCRAPE_MAX_CHARS`           | `8000`                   | Characters returned per `scrape` call (upper bound of `max_chars`)           |
+| `SCRAPE_RENDER_URL`          | —                        | CDP WebSocket endpoint of the headless browser (empty = rendering disabled)  |
+| `BROWSERLESS_TOKEN`          | —                        | Token appended to `SCRAPE_RENDER_URL` as `?token=...`                         |
+| `SCRAPE_RENDER_MODE`         | `fallback` if render URL is set, otherwise `off` | `off`, `fallback` (HTTP Markdown under 200 characters) or `always`; see below |
+| `SCRAPE_RENDER_TIMEOUT`      | `20s`                    | Timeout of a single render                                                   |
+| `SCRAPE_RENDER_CONCURRENCY`  | `1`                      | Maximum simultaneous renders                                                 |
 | `LOG_LEVEL`                  | `INFO`                   | Log level (`DEBUG`, `INFO`, `WARN`, `ERROR`)                                 |
 | `X_API_KEY`                  | —                        | Shared secret expected in the `X-API-Key` header                             |
 | `BASE_URL`                   | —                        | Public base URL of this server                                               |
@@ -77,6 +86,31 @@ Docker image only (embedded SearXNG):
 | `SEARXNG_PORT`         | `8888`       | Port of the embedded SearXNG                                                        |
 | `SEARXNG_BIND_ADDRESS` | `127.0.0.1`  | SearXNG bind address. Keep loopback in production; `0.0.0.0` for debugging only     |
 | `SEARXNG_SECRET`       | random       | SearXNG secret key, generated at each start when unset                              |
+
+### Choosing a scrape render mode
+
+`SCRAPE_RENDER_MODE` accepts `off`, `fallback` or `always` (case-insensitive).
+`none` is not accepted and causes a configuration error.
+
+| Mode | Fetch strategy | Error behavior |
+|------|----------------|----------------|
+| `off` | Plain HTTP only, even if `SCRAPE_RENDER_URL` is set. | HTTP/extraction errors are returned. |
+| `fallback` | Fetch over HTTP first. Use the browser only when the full converted Markdown content has **fewer than 200 characters**, before pagination. | HTTP/extraction errors are returned without trying the browser. If rendering fails, its error is ignored and the original HTTP content is returned. |
+| `always` | Use the browser directly, skipping the plain HTTP fetch. | Rendering errors are returned; there is no plain HTTP retry. |
+
+The `fallback` check is a **length heuristic, not JavaScript detection**:
+
+- An empty single-page application shell triggers rendering, but so can a short static page.
+- A page with **200 or more characters** of HTTP Markdown never triggers rendering, even if JavaScript is needed to load its useful content.
+- HTTP errors such as **403**, network timeouts and extraction errors do not trigger rendering.
+
+Choose `fallback` to avoid browser work on pages that already provide enough content over HTTP.
+Choose `always` to execute JavaScript on every page rather than relying on this heuristic.
+Choose `off` when no browser rendering is wanted.
+
+Both `fallback` and `always` require a non-empty `SCRAPE_RENDER_URL`; otherwise startup fails.
+When the mode is unset or blank, it defaults to `fallback` if the URL is set, or `off` otherwise.
+The supplied [.env.example](.env.example) explicitly sets a local browser URL and `always`, overriding that automatic default.
 
 ## Build & Run with Docker
 
@@ -113,11 +147,50 @@ make docker-run
 # = docker run --rm -p 8080:8080 -p 8888:8888 -e SEARXNG_BIND_ADDRESS=0.0.0.0 mcp-searxng
 ```
 
+### Docker Compose (production)
+
+[docker-compose.prod.yml](docker-compose.prod.yml) runs the MCP image (embedded SearXNG) plus an internal browserless Chromium.
+
+In Dokploy, use `mcp-searxng/docker-compose.prod.yml` as the Compose path and:
+
+- set `BROWSERLESS_TOKEN` in the environment, then add your domain in the **Domains** tab (Container Port `8080`) and redeploy — Dokploy injects the Traefik labels itself;
+- do not add Traefik labels or networks to the compose file;
+- do not configure Dokploy **Mounts** for this service: they make Dokploy pass `--project-directory`, which breaks the `context: ..` build context;
+- keep the `browser` service name stable (do not enable **Randomize**, which renames services).
+
+The browser has no published port.
+
 SearXNG settings are in [docker/settings.yml](docker/settings.yml) (JSON format enabled, limiter disabled since access control is done by the MCP server).
 
 ## Development
 
-### Local SearXNG (development only)
+### Full development stack (SearXNG + headless browser)
+
+[docker-compose.dev.yml](docker-compose.dev.yml) starts the whole development infrastructure: the standalone SearXNG and a [browserless](https://browserless.io/) Chromium used for JavaScript-rendered pages.
+
+```bash
+make dev-infra          # docker compose -f docker-compose.dev.yml up -d --build
+make dev                # run mcp-searxng against the stack
+make dev-infra-stop     # stop the stack
+```
+
+Point `.env` at both services:
+
+```env
+SEARXNG_URL=http://localhost:8888
+BROWSERLESS_TOKEN=dev-token
+SCRAPE_RENDER_URL=ws://localhost:3000
+SCRAPE_RENDER_MODE=fallback
+```
+
+This example uses selective rendering. Use `SCRAPE_RENDER_MODE=always` instead to render every page,
+as in [.env.example](.env.example); use `off` for plain HTTP only.
+
+`BROWSERLESS_TOKEN` is appended to the URL automatically (default `dev-token`). An explicit `?token=...` in `SCRAPE_RENDER_URL` takes precedence.
+
+Both ports are published on `127.0.0.1` only. This stack is development-only; production uses [docker-compose.prod.yml](docker-compose.prod.yml) (Dokploy).
+
+### Local SearXNG only (development only)
 
 [Dockerfile.dev](Dockerfile.dev) builds a **standalone SearXNG instance for local development only**: it lets you run mcp-searxng from your machine (`make run`, `make dev`, debugger) against a real SearXNG. It is **not** meant to be deployed — use [Dockerfile](Dockerfile) (MCP server + embedded SearXNG) in production.
 

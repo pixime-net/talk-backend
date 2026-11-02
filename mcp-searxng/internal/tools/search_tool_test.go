@@ -44,7 +44,8 @@ const searxngSample = `{
       "content": "",
       "engine": "youtube",
       "publishedDate": "2025-01-02T10:00:00",
-      "length": 95.0
+      "length": 95.0,
+      "views": 12000
     }
   ],
   "answers": [
@@ -89,6 +90,9 @@ func TestSearchToolOutput_DecodesSearxngJSON(t *testing.T) {
 	if out.Results[1].PublishedDate != "2025-01-02T10:00:00" || out.Results[1].Length != 95.0 {
 		t.Errorf("unexpected second result: %+v", out.Results[1])
 	}
+	if out.Results[1].Views != "12000" {
+		t.Errorf("expected numeric views to decode as %q, got %q", "12000", out.Results[1].Views)
+	}
 	if len(out.Answers) != 1 || out.Answers[0].Answer != "42" || out.Answers[0].URL != "" {
 		t.Errorf("unexpected answers: %+v", out.Answers)
 	}
@@ -101,6 +105,24 @@ func TestSearchToolOutput_DecodesSearxngJSON(t *testing.T) {
 	}
 	if len(out.Suggestions) != 1 || out.Suggestions[0] != "péage A10" {
 		t.Errorf("unexpected suggestions: %v", out.Suggestions)
+	}
+}
+
+func TestStringOrNumber_UnmarshalJSON(t *testing.T) {
+	tests := map[string]StringOrNumber{
+		`"1.2K views"`: "1.2K views",
+		`12000`:        "12000",
+		`null`:         "",
+		`true`:         "",
+	}
+	for input, want := range tests {
+		var got StringOrNumber
+		if err := json.Unmarshal([]byte(input), &got); err != nil {
+			t.Fatalf("unexpected error for %s: %v", input, err)
+		}
+		if got != want {
+			t.Errorf("StringOrNumber(%s) = %q, want %q", input, got, want)
+		}
 	}
 }
 

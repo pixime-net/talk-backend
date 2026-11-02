@@ -1,0 +1,45 @@
+# LOCAL DEVELOPMENT ONLY: full infrastructure for running mcp-searxng from the
+# host (make dev / make run).
+#
+#   docker compose -f docker-compose.dev.yml up -d --build   # start
+#   docker compose -f docker-compose.dev.yml down            # stop
+#
+# Then run the Go server on the host; its .env should point to:
+#   SEARXNG_URL=http://localhost:8888
+#   BROWSERLESS_TOKEN=dev-token
+#   SCRAPE_RENDER_URL=ws://localhost:3000
+#
+# SearXNG is built from Dockerfile.dev (bundled settings.yml). The headless
+# browser is the upstream browserless image, used only for JS-rendered pages.
+# This file is NOT used in production: see docker-compose.prod.yml.
+name: mcp-searxng-dev
+
+services:
+  searxng:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: mcp-searxng-dev-searxng
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8888:8888"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8888/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  browser:
+    image: ghcr.io/browserless/chromium:v2.58.1
+    restart: unless-stopped
+    environment:
+      # browserless v2 always requires a token (a random one is generated when
+      # TOKEN is unset). The app appends the same value to SCRAPE_RENDER_URL.
+      TOKEN: ${BROWSERLESS_TOKEN:-dev-token}
+      CONCURRENT: "1"
+      TIMEOUT: "30000"
+    ports:
+      - "127.0.0.1:3000:3000"
+    # Chromium needs a comfortable /dev/shm.
+    shm_size: "1gb"
