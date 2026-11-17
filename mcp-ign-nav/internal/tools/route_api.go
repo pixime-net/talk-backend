@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -160,6 +161,25 @@ type routeAPIName struct {
 	NomDroite   string `json:"nom_1_droite"`
 	CpxNumero   string `json:"cpx_numero"`
 	CpxToponyme string `json:"cpx_toponyme"`
+}
+
+func (n *routeAPIName) UnmarshalJSON(data []byte) error {
+	if len(data) > 0 && data[0] == '"' {
+		var name string
+		if err := json.Unmarshal(data, &name); err != nil {
+			return err
+		}
+		*n = routeAPIName{NomGauche: name}
+		return nil
+	}
+
+	type routeAPINameObject routeAPIName
+	var name routeAPINameObject
+	if err := json.Unmarshal(data, &name); err != nil {
+		return err
+	}
+	*n = routeAPIName(name)
+	return nil
 }
 
 // routeErrorResponse is the error format from the IGN navigation API.

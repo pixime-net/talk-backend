@@ -3,9 +3,11 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"golang.org/x/time/rate"
@@ -18,6 +20,57 @@ func TestRouteTool_Metadata(t *testing.T) {
 	}
 	if tool.Description() == "" {
 		t.Error("description should not be empty")
+	}
+}
+
+func TestRouteTool_Call_RoadNameFormats(t *testing.T) {
+	tests := []struct {
+		name       string
+		roadName   string
+		wantName   string
+		wantNumber string
+		wantPlace  string
+		wantError  bool
+	}{
+		{name: "string", roadName: `"Autoroute du Soleil"`, wantName: "Autoroute du Soleil"},
+		{name: "empty string", roadName: `""`},
+		{name: "object left", roadName: `{"nom_1_gauche":"Rue gauche","nom_1_droite":"Rue droite","cpx_numero":"A6","cpx_toponyme":"Bourgogne"}`, wantName: "Rue gauche", wantNumber: "A6", wantPlace: "Bourgogne"},
+		{name: "object right", roadName: `{"nom_1_droite":"Rue droite"}`, wantName: "Rue droite"},
+		{name: "null", roadName: `null`},
+		{name: "invalid number", roadName: `42`, wantError: true},
+		{name: "invalid array", roadName: `[]`, wantError: true},
+		{name: "invalid object field", roadName: `{"nom_1_gauche":42}`, wantError: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, err := fmt.Fprintf(w, `{"geometry":{"type":"LineString","coordinates":[[4.835,45.758],[2.347,48.859]]},"portions":[{"steps":[{"attributes":{"name":%s}}]}]}`, tt.roadName)
+				if err != nil {
+					t.Errorf("write response: %v", err)
+				}
+			}))
+			defer srv.Close()
+
+			tool := newRouteToolWithBaseURL(srv.URL, srv.Client())
+			result, err := tool.Call(context.Background(), RouteToolInput{Start: "4.835,45.758", End: "2.347,48.859"})
+			if tt.wantError {
+				if err == nil || !strings.Contains(err.Error(), "decoding response") {
+					t.Fatalf("expected decoding error, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(result.Portions) != 1 || len(result.Portions[0].Steps) != 1 {
+				t.Fatalf("unexpected portions: %+v", result.Portions)
+			}
+			step := result.Portions[0].Steps[0]
+			if step.Name != tt.wantName || step.RoadNumber != tt.wantNumber || step.Toponyme != tt.wantPlace {
+				t.Errorf("got name %q, road number %q, toponyme %q; want %q, %q, %q", step.Name, step.RoadNumber, step.Toponyme, tt.wantName, tt.wantNumber, tt.wantPlace)
+			}
+		})
 	}
 }
 
